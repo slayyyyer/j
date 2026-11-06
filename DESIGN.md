@@ -1,0 +1,236 @@
+# Design
+
+A from-scratch interpreter for a useful subset of J, in Java 21. The aim is a clean,
+readable implementation that can be checked against a real J interpreter, not full J
+compatibility. No runtime dependencies; JUnit 5 for tests.
+
+## 1. Data model (`j.array`)
+
+`JArray` is the only noun type. A scalar is not special: it is simply rank 0.
+
+- `JType type`: `INT` (`long`), `FLOAT` (`double`), `CHAR` (`char`).
+- `int[] shape`: dimensions, row-major. `[]` is a scalar, `[n]` a vector, `[r, c]` a matrix.
+- flat `Object data`: `long[]`, `double[]`, or `char[]`, length = product(shape).
+- Invariants: dimensions are non-negative, the atom count equals the shape product,
+  and the array is immutable. Factories copy caller arrays; `shape()` returns a copy.
+- Access is by atom (`longAt`, `doubleAt`, `charAt`) with a `numericAt` widening helper.
+  `toFloat()` promotes an `INT` array to `FLOAT`; `CHAR` cannot be promoted.
+
+Boxing is deliberately deferred. Adding it means a `BOX` type whose storage is
+`JArray[]`; rank, shape and assembly code stay unchanged, while display and boxing
+verbs gain cases.
+
+`Shapes` holds shape arithmetic (`size`, row-major `strides`, formatting) so that
+`JArray` stays about storage and `JFormat` about presentation.
+
+### Display
+
+`JFormat` renders J's display notation:
+
+- negative numbers use `_` (e.g. `_3`, `_0.5`); infinities are `_`/`__`; NaN is `_.`;
+- floats use J's default print precision of **5 significant digits**, trimmed of
+  trailing zeros, switching to power notation at exponent >= 6 or < -4
+  (`0.33333`, `1e6`, `1e_5`);
+- a numeric matrix is rows with per-column right alignment; planes of rank 3+ arrays
+  are separated by a blank line;
+- character arrays are printed as text, without quotes;
+- assignments do not print, but that is the REPL's job, not the formatter's.
+
+The exact edges of J's float formatting (tie rounding, exponent thresholds, and the
+leading space jconsole may add) are noted as **UNCERTAIN** in the README and will be
+compared with a real interpreter.
+
+## 2. Lexer (`j.lex`)
+
+`Lexer` turns a line into tokens. Token kinds: `NUMBER`, `STRING`, `NAME`,
+`PRIMITIVE`, `LPAREN`, `RPAREN`, `ASSIGN_GLOBAL` (`=:`), `ASSIGN_LOCAL` (`=.`),
+`LBRACE2`/`RBRACE2` (`{{`/`}}`, for direct definition), and `EOF`.
+
+- Primitive words are matched longest-first from an explicit table: `=:` `=.` `{.`
+  `}.` `|.` `|:` `i.` `~:` `<:` `>:` `@:` `@` `&` `.` `:` `"` `/` `\` `~` ... plus
+  the one-character arithmetic and structural primitives.
+- `/` and `\` are adverbs, not part of a verb name: `+/` lexes as `+`, `/`.
+  Likewise `+/ .*` lexes as `+`, `/`, `.`, `*`, which is how J's inner product is
+  spelled.
+- Numbers: `3`, `_3`, `3.5`, `_3.5`, `1e6`, `1e_5`, `_` (infinity), `__` (negative
+  infinity), `_.` (NaN). A numeric token without `.` or an exponent is an `INT`.
+- Strings: `'abc'` yields a rank-1 `CHAR` array; a doubled quote is a literal quote
+  (`'don''t'`). Unterminated strings are a spelling error.
+- `NB.` outside a string starts a comment running to end of line.
+- Comments and whitespace are skipped; a line may produce no tokens.
+
+Lexing is context-free. There is no `-`-as-negative ambiguity because J writes
+negative literals with `_`; `-` is always the verb.
+
+## 3. Parser and AST (`j.parse`)
+
+J has no precedence; a sentence is evaluated right to left. The parser builds an AST
+that makes that order explicit rather than evaluating while scanning.
+
+Words are classified as noun, verb, adverb, conjunction, copula, or parenthesis.
+A name's class comes from the name table (as in J): names assigned a verb are verbs,
+names assigned a noun are nouns, and unbound names are treated as nouns and fail at
+evaluation with `value error`. Redefinition changes the class for later sentences.
+
+### Syntax handling
+
+1. Parentheses are parsed recursively; the inner phrase is classified as a noun
+   phrase or a verb phrase by its result.
+2. Adjacent nouns form one noun phrase (a strand), e.g. `3 4` or `1 2 3`.
+3. Adverbs and conjunctions are applied before application, because they bind
+   tighter: `+/"1`, `+/ .*`, `+&2`. Their operands are kept as AST nodes and are
+   evaluated when the derived verb value is built (so `+&a` captures `a`'s value at
+   definition time). `"` takes a noun rank specification; `@`/`@:` take verbs;
+   `&` takes a noun (bond) or a verb.
+4. The remaining terms alternate between noun phrases and verbs. Reduce from the
+   right:
+   - `verb noun` -> `Monad(verb, noun)`;
+   - `noun verb noun` -> `Dyad(noun, verb, noun)`;
+   - a remaining phrase containing only verbs is a train (a verb value).
+   This yields right-to-left evaluation with no precedence.
+5. `name =: expr` and `name =. expr` become assignment nodes. The right side may be
+   a noun or a verb. Chained assignment is right-associative.
+6. `3 : 0 ... )` and `{{ ... }}` are parsed into explicit-verb definitions at
+   milestone 9; they reuse the same sentence parser for their bodies.
+
+### AST
+
+```java
+sealed interface Expr permits Lit, Ref, Strand, Monad, Dyad, Assign {
+    record Lit(JArray value) implements Expr {}
+    record Ref(String name) implements Expr {}
+    record Strand(List<Expr> parts) implements Expr {}       // juxtaposed nouns
+    record Monad(VerbExpr verb, Expr y) implements Expr {}
+    record Dyad(Expr x, VerbExpr verb, Expr y) implements Expr {}
+    record Assign(String name, boolean global, Expr rhs) implements Expr {}
+}
+
+sealed interface VerbExpr permits VerbLit, VerbRef, WithAdverb, WithConjunction, Train {
+    record VerbLit(Verb verb) implements VerbExpr {}
+    record VerbRef(String name) implements VerbExpr {}
+    record WithAdverb(VerbExpr operand, Adverb adverb) implements VerbExpr {}
+    record WithConjunction(VerbExpr left, Conjunction conj, Expr right) implements VerbExpr {}
+    record Train(List<VerbExpr> verbs) implements VerbExpr {}
+}
+```
+
+`Expr` denotes phrases that produce a noun (applications always produce nouns).
+`VerbExpr` denotes phrases that produce a verb. Assignment can store either.
+
+Examples:
+
+| source               | AST shape                                             |
+|----------------------|-------------------------------------------------------|
+| `2 * 3 + 4`          | `Dyad(2, *, Dyad(3, +, 4))`                           |
+| `- 2 + 3`            | `Monad(-, Dyad(2, +, 3))`                             |
+| `(+/ % #) 1 2 3 4`   | `Monad(Train(+/ , %, #), Strand(1 2 3 4))`            |
+| `+/ i. 3 4`          | `Monad(+/ , Monad(i., Strand(3, 4)))`                 |
+| `+/"1 i. 3 4`        | `Monad(WithConjunction(+/ , ", 1), Monad(i., 3 4))`   |
+
+### Trains
+
+A train is a verb phrase containing only verbs. 2 verbs form a hook, 3 a fork:
+
+```
+(f g) y       = y f (g y)          x (f g) y     = x f (g y)
+(f g h) y     = (f y) g (h y)      x (f g h) y   = (x f y) g (x h y)
+```
+
+Longer trains are grouped from the right: an odd-length train is a fork of its
+first two verbs and the remaining train, and an even-length train is a hook of its
+first verb and the remaining train. **UNCERTAIN**: the exact 4+-train grouping needs
+checking against J.
+
+Note that without parentheses, `- - 5` is two monads (`5`), not a hook: a train is a
+verb phrase with no noun to apply to, whereas `- - 5` has an argument. This follows
+from reducing applications from the right before treating leftover verbs as a train.
+
+## 4. Verbs (`j.verbs`)
+
+Every verb provides a monadic and dyadic definition and a rank triple:
+
+```java
+public abstract class Verb {
+    public abstract JArray monadCell(JArray y);
+    public abstract JArray dyadCell(JArray x, JArray y);
+    public abstract int monadRank();   // Integer.MAX_VALUE = unbounded
+    public abstract int leftRank();
+    public abstract int rightRank();
+    public abstract String repr();     // J spelling, for display of verb values
+}
+```
+
+Cell methods receive arguments already cut to the verb's ranks. The rank machinery
+in `j.eval` maps over the frame, so base verbs contain only atom/cell logic. Scalar
+extension is not special-cased in arithmetic: `+` has ranks `0 0 0`, and frame
+agreement broadcasts a scalar frame.
+
+Derived verbs (`Insert`, `Prefix`, `Reflex`, `Bond`, `Compose`, `Rank`, `Hook`,
+`Fork`) implement the same interface and delegate to their operand verbs. Adverbs
+and conjunctions are therefore just verb constructors.
+
+A verb with no definition for a valence throws `valence error`. Character arguments
+to arithmetic throw `domain error`.
+
+## 5. Evaluator (`j.eval`)
+
+- `Evaluator` resolves `Ref` and `VerbRef` through an `Environment`, evaluates
+  `Monad`/`Dyad` by calling the rank wrapper, and stores assignment results.
+- A sentence's value is a noun or a verb; the REPL prints nouns with `JFormat` and
+  verbs with `repr()`. Assignment sentences are marked "no display".
+- Rank application for a monad:
+  1. `r = min(verb.monadRank(), rank(y))` (unbounded means the whole argument);
+  2. frame shape = leading `rank(y) - r` axes; cell shape = trailing `r` axes;
+  3. apply the cell verb to every cell, then assemble results as
+     `frameShape + resultCellShape`; all cells must produce the same shape.
+- Dyad: compute both frames/cells; frames must have equal shape, or one frame must
+  be empty (a scalar) and is broadcast. Unequal frames -> `length error`.
+- Errors are `JError` with J's wording: `domain error`, `length error`, `rank error`,
+  `index error`, `value error`, `valence error`, `syntax error`, `limit error`.
+  The REPL catches them, prints the message, and keeps going.
+
+Names live in a global environment for now; `=.` locals are scoped to explicit verb
+bodies at milestone 9.
+
+## 6. Primitive ranks (to be confirmed against J)
+
+Base arithmetic and comparisons are atom-wise (`0 0 0`). Structural verbs mostly
+want whole arguments (unbounded ranks), with exceptions: `$` has a rank-1 left
+operand (a shape list), and `{` has special index ranks. Exact rank values for
+structural verbs will be verified against J and recorded in the README rather than
+guessed here. The `"` conjunction can override any of them.
+
+## 7. REPL (`j.repl`)
+
+`Repl` reads a line, lexes, parses, evaluates, and prints the result (unless the
+sentence was assignment). `3 : 0` definitions accumulate lines until the closing
+`)`. End-of-input exits; EOF and errors must not crash the loop. The REPL is added
+at milestone 3, after the parser/evaluator exist.
+
+## 8. Testing and milestones
+
+JUnit 5 tests live beside each package; display is tested as exact strings. An
+acceptance suite mirrors the examples in the project brief. Work proceeds milestone
+by milestone, running the suite and committing after each:
+
+1. `JArray` + display + tests;
+2. tokenizer + tests;
+3. parser/evaluator for nouns and simple verbs + REPL;
+4. arithmetic/comparison with scalar extension;
+5. structural verbs (`i.`, `$`, `,`, `#`, `|.`, `{`, `{.`, `}.`);
+6. adverbs `/ \ ~`;
+7. rank conjunction `"`;
+8. trains;
+9. assignment and user-defined verbs.
+
+## 9. Known uncertainties (to check against J)
+
+- exact float display rounding and exponent cutovers;
+- rank >= 3 display grouping and blank lines;
+- whether J's matrix display pads the first column;
+- 4+-verb train grouping;
+- ranks and monadic meanings of comparison/structural primitives;
+- strand behavior when juxtaposed nouns have non-scalar shapes;
+- parsing of `+/ .*` and `@`/`@:` rank consequences.
+
+These are called out where implemented rather than silently guessed.

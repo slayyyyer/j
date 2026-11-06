@@ -1,0 +1,8 @@
+.gradle/
+build/
+out/
+.tools/
+.freebuff/
+.idea/
+*.iml
+*.class
