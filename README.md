@@ -18,7 +18,7 @@ architecture and the plan.
 | 2 | Tokenizer (`_` negatives, `NB.` comments, strings) | planned |
 | 3 | Parser/evaluator for nouns and verbs, REPL | planned |
 | 4 | Arithmetic and comparison with scalar extension | planned |
-| 5 | Structural verbs (`i. $ , # |. { {. }.`) | planned |
+| 5 | Structural verbs (iota, shape, ravel, tally, reverse/rotate, index, take/drop) | planned |
 | 6 | Adverbs `/ \ ~` | planned |
 | 7 | Rank conjunction `"` | planned |
 | 8 | Trains (hooks and forks) | planned |
