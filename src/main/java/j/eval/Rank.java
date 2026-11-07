@@ -3,6 +3,7 @@ package j.eval;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 
 import j.JError;
 import j.array.JArray;
@@ -98,7 +99,7 @@ public final class Rank {
 
     private static JArray applySparseMonad(Verb verb, JArray y) {
         if (y.rank() == 0) {
-            return null;
+            return applySparseMonadScalar(verb, y);
         }
         try {
             JArray fillResult = verb.monadCell(scalarOf(y.type(), y.sparseFill()));
@@ -125,7 +126,7 @@ public final class Rank {
 
     private static JArray applySparseDyad(Verb verb, JArray x, JArray y) {
         if (x.rank() == 0 && y.rank() == 0) {
-            return null;
+            return applySparseDyadScalar(verb, x, y);
         }
         if (x.rank() > 0 && y.rank() > 0 && !Arrays.equals(x.shape(), y.shape())) {
             return null;
@@ -173,6 +174,74 @@ public final class Rank {
                 resultValues[entry] = result.atomAt(0);
             }
             return JArray.sparse(resultType, resultShape, resultFill, indices, resultValues);
+        } catch (JError domain) {
+            return null;
+        }
+    }
+
+    private static JArray applySparseMonadScalar(Verb verb, JArray y) {
+        JArray sparseY = sparseScalarOf(y);
+        if (sparseY == null) {
+            return null;
+        }
+        try {
+            JArray fillResult = verb.monadCell(
+                    scalarOf(sparseY.type(), sparseY.sparseFill()));
+            JArray valueResult = verb.monadCell(
+                    scalarOf(sparseY.type(), sparseY.atomAt(0)));
+            if (fillResult.rank() != 0 || valueResult.rank() != 0
+                    || fillResult.type() != valueResult.type()) {
+                return null;
+            }
+            return JArray.sparse(valueResult.type(), new int[0], fillResult.atomAt(0),
+                    new int[]{0}, new Object[]{valueResult.atomAt(0)});
+        } catch (JError domain) {
+            return null;
+        }
+    }
+
+    private static JArray applySparseDyadScalar(Verb verb, JArray x, JArray y) {
+        JArray sparseX = sparseScalarOf(x);
+        JArray sparseY = sparseScalarOf(y);
+        if (sparseX == null || sparseY == null) {
+            return null;
+        }
+        try {
+            JArray fillResult = verb.dyadCell(
+                    scalarOf(sparseX.type(), sparseX.sparseFill()),
+                    scalarOf(sparseY.type(), sparseY.sparseFill()));
+            JArray valueResult = verb.dyadCell(
+                    scalarOf(sparseX.type(), sparseX.atomAt(0)),
+                    scalarOf(sparseY.type(), sparseY.atomAt(0)));
+            if (fillResult.rank() != 0 || valueResult.rank() != 0
+                    || fillResult.type() != valueResult.type()) {
+                return null;
+            }
+            return JArray.sparse(valueResult.type(), new int[0], fillResult.atomAt(0),
+                    new int[]{0}, new Object[]{valueResult.atomAt(0)});
+        } catch (JError domain) {
+            return null;
+        }
+    }
+
+    private static JArray sparseScalarOf(JArray array) {
+        if (array.rank() != 0) {
+            return null;
+        }
+        if (array.isSparse()) {
+            return array;
+        }
+        if (array.type() == JType.BOX) {
+            return null;
+        }
+        try {
+            Object fill = JArray.fillAtom(array.type()).atomAt(0);
+            Object value = array.atomAt(0);
+            if (Objects.equals(fill, value)) {
+                return JArray.sparse(array.type(), new int[0], fill, new int[0], new Object[0]);
+            }
+            return JArray.sparse(array.type(), new int[0], fill,
+                    new int[]{0}, new Object[]{value});
         } catch (JError domain) {
             return null;
         }

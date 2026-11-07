@@ -47,11 +47,10 @@ public final class JFormat {
     private static String formatSparse(JArray array) {
         int[] indices = array.sparseIndices();
         Object[] values = array.sparseValues();
-        if (indices.length == 0) {
-            return "";
-        }
-
         int rank = array.rank();
+        if (indices.length == 0) {
+            return rank == 0 ? formatAtom(array.type(), array.sparseFill()) : "";
+        }
         if (rank == 0) {
             return formatAtom(array.type(), values.length == 0 ? array.sparseFill() : values[0]);
         }

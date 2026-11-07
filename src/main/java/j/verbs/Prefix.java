@@ -39,7 +39,11 @@ public final class Prefix extends Verb {
         }
         int items = y.itemCount();
         if (items == 0) {
-            return JArray.empty(y.type(), Shapes.concat(new int[]{0}, y.itemShape()));
+            int[] resultShape = Shapes.concat(new int[]{0}, y.itemShape());
+            return y.isSparse()
+                    ? JArray.sparse(y.type(), resultShape, y.sparseFill(),
+                            new int[0], new Object[0])
+                    : JArray.empty(y.type(), resultShape);
         }
 
         List<JArray> results = new ArrayList<>(items);

@@ -74,6 +74,23 @@ class SparseTest {
     }
 
     @Test
+    void insertAndPrefixPreserveSparseStorage() {
+        JArray reduced = eval("+/ $. 0 5 0 2 0");
+        assertTrue(reduced.isSparse());
+        assertEquals("7", JFormat.format(reduced));
+
+        JArray prefixed = eval("+/\\ $. 0 5 0 2 0");
+        assertTrue(prefixed.isSparse());
+        assertEquals("1 | 5\n2 | 5\n3 | 7\n4 | 7", JFormat.format(prefixed));
+
+        JArray matrixReduced = eval("+/ $. 3 4 $ 0 75 0 53 0 0 67 67 93 0 51 83");
+        assertTrue(matrixReduced.isSparse());
+        assertEquals(
+                "0 |  93\n1 |  75\n2 | 118\n3 | 203",
+                JFormat.format(matrixReduced));
+    }
+
+    @Test
     void arithmeticPreservesSparseStorage() {
         JArray negated = eval("- $. 3 4 $ 0 75 0 53 0 0 67 67 93 0 51 83");
 
