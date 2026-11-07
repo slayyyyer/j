@@ -3,7 +3,6 @@ package j.eval;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Objects;
 
 import j.JError;
 import j.array.JArray;
@@ -231,13 +230,10 @@ public final class Rank {
         if (array.isSparse()) {
             return array;
         }
-        if (array.type() == JType.BOX) {
-            return null;
-        }
         try {
             Object fill = JArray.fillAtom(array.type()).atomAt(0);
             Object value = array.atomAt(0);
-            if (Objects.equals(fill, value)) {
+            if (JArray.atomEquals(fill, value)) {
                 return JArray.sparse(array.type(), new int[0], fill, new int[0], new Object[0]);
             }
             return JArray.sparse(array.type(), new int[0], fill,

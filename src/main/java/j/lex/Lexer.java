@@ -34,7 +34,7 @@ public final class Lexer {
      * part of a verb name, so {@code +/} intentionally becomes two tokens.
      */
     private static final String[] PRIMITIVES = {
-            "{{", "}}",
+            "$.^:_1", "{{", "}}",
             "=:", "=.", "{.", "}.", "|.", "|:", "i.", "~:", "<:", ">:", "@:",
             "+", "-", "*", "%", "^", "=", "<", ">", "~", "$.", "$", ",", "#",
             "{", ";", "@", "&", ".", ":", "\"", "/", "\\"

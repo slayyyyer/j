@@ -147,15 +147,12 @@ public final class JArray {
      */
     public static JArray sparse(
             JType type, int[] shape, Object fill, int[] indices, Object[] values) {
-        if (type == JType.BOX) {
-            throw new JError("domain error");
-        }
         if (indices.length != values.length) {
             throw new IllegalArgumentException("sparse indices and values must have equal length");
         }
         TreeMap<Integer, Object> entries = new TreeMap<>();
         for (int entry = 0; entry < indices.length; entry++) {
-            if (!Objects.equals(values[entry], fill)) {
+            if (!atomEquals(values[entry], fill)) {
                 entries.put(indices[entry], values[entry]);
             }
         }
@@ -367,9 +364,6 @@ public final class JArray {
         if (sparse != null || shape.length == 0) {
             return this;
         }
-        if (type == JType.BOX) {
-            throw new JError("domain error");
-        }
 
         int count = 0;
         for (int atom = 0; atom < size; atom++) {
@@ -406,7 +400,7 @@ public final class JArray {
                     && value.real() == 0.0
                     && value.imaginary() == 0.0;
             case CHAR -> atom instanceof Character value && value == ' ';
-            case BOX -> false;
+            case BOX -> atom instanceof JArray && atomEquals(atom, fillObject(JType.BOX));
         };
     }
 
@@ -927,9 +921,6 @@ public final class JArray {
         } catch (IllegalArgumentException domain) {
             return null;
         }
-        if (resultType == JType.BOX) {
-            return null;
-        }
         JArray left;
         JArray right;
         try {
@@ -944,10 +935,10 @@ public final class JArray {
 
         Object leftFill = convertAtom(left.sparseFill(), resultType);
         Object rightFill = convertAtom(right.sparseFill(), resultType);
-        Object resultFill = Objects.equals(leftFill, rightFill)
+        Object resultFill = atomEquals(leftFill, rightFill)
                 ? leftFill
                 : fillObject(resultType);
-        if (!Objects.equals(leftFill, resultFill) || !Objects.equals(rightFill, resultFill)) {
+        if (!atomEquals(leftFill, resultFill) || !atomEquals(rightFill, resultFill)) {
             return null;
         }
 
@@ -1173,6 +1164,25 @@ public final class JArray {
             resultIndices[at] = indices.get(at);
         }
         return JArray.sparse(type, newShape, sparse.fill(), resultIndices, values.toArray());
+    }
+
+    /**
+     * Structural equality for one stored atom. Box atoms are JArray contents, so
+     * their shape and atoms are compared rather than their object identity.
+     */
+    public static boolean atomEquals(Object left, Object right) {
+        if (left instanceof JArray leftArray && right instanceof JArray rightArray) {
+            if (leftArray.type() != rightArray.type() || !leftArray.sameShape(rightArray)) {
+                return false;
+            }
+            for (int atom = 0; atom < leftArray.size(); atom++) {
+                if (!atomEquals(leftArray.atomAt(atom), rightArray.atomAt(atom))) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        return Objects.equals(left, right);
     }
 
     private static JArray filled(JType type, int[] shape) {

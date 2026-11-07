@@ -49,10 +49,11 @@ public final class JFormat {
         Object[] values = array.sparseValues();
         int rank = array.rank();
         if (indices.length == 0) {
-            return rank == 0 ? formatAtom(array.type(), array.sparseFill()) : "";
+            return rank == 0 ? formatSparseValue(array.type(), array.sparseFill()) : "";
         }
         if (rank == 0) {
-            return formatAtom(array.type(), values.length == 0 ? array.sparseFill() : values[0]);
+            return formatSparseValue(
+                    array.type(), values.length == 0 ? array.sparseFill() : values[0]);
         }
 
         int[] shape = array.shape();
@@ -72,7 +73,7 @@ public final class JFormat {
         String[] renderedValues = new String[values.length];
         int valueWidth = 0;
         for (int entry = 0; entry < values.length; entry++) {
-            renderedValues[entry] = formatAtom(array.type(), values[entry]);
+            renderedValues[entry] = formatSparseValue(array.type(), values[entry]);
             valueWidth = Math.max(valueWidth, renderedValues[entry].length());
         }
 
@@ -177,6 +178,10 @@ public final class JFormat {
 
     private static String atom(JArray array, int index) {
         return formatAtom(array.type(), array.atomAt(index));
+    }
+
+    private static String formatSparseValue(JType type, Object value) {
+        return type == JType.BOX ? format((JArray) value) : formatAtom(type, value);
     }
 
     private static String formatAtom(JType type, Object atom) {

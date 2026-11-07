@@ -14,9 +14,9 @@ sparse arrays, structural verbs, adverbs `/ \ ~`, the rank conjunction `"`, trai
 assignment, explicit verbs with control words, catalog, generalized transpose and
 multi-axis rotate.
 
-This is still a teaching subset, not a full J replacement. Boxed sparse conversion,
-locales, system facilities, the remaining conjunctions and a few exact display
-details are outside the current scope; see [Limitations](#limitations).
+This is still a teaching subset, not a full J replacement. Locales, system
+facilities, the remaining conjunctions and a few exact display details are outside
+the current scope; see [Limitations](#limitations).
 
 | Milestone | Description | Status |
 |-----------|-------------|--------|
@@ -99,7 +99,8 @@ System.out.println(m);
 - empty arrays (a shape containing a zero);
 - numeric promotion `INT -> BIGINT -> RATIONAL -> FLOAT -> COMPLEX`;
 - character arrays remain separate from numeric arrays;
-- dense and sparse storage; sparse arrays retain only non-fill atoms plus a fill atom;
+- dense and sparse storage, including boxed sparse arrays; sparse arrays retain
+  only non-fill atoms plus a fill atom;
 - boxed arrays, including nested boxes, drawn as bordered cells;
 - J display: `_` negatives, `_`/`__` infinities, `_.` NaN, aligned matrix
   columns, blank lines between rank 3+ planes, and character arrays shown as text.
@@ -177,7 +178,7 @@ Unless noted, these operate on the leading axis:
 - `|:` — transpose monadically and generalized transpose dyadically with an axis
   list;
 - `$.` — convert a dense array to sparse storage monadically; `0 $. y` toggles
-  between sparse and dense.
+  between sparse and dense; `$.^:_1` densifies a sparse array.
 
 `i.` matches items and returns `#x` for a missing item. `#` supports a scalar
 count, per-item count vectors, and J complex counts `a j. b`, which copy an item
@@ -212,7 +213,9 @@ tally, display, and atom-wise arithmetic operations as dense arrays. Structural
 verbs remap stored entries directly, so reversing, transposing, taking, dropping,
 copying, reshaping, appending, and raveling sparse arrays keep sparse storage.
 Reductions and prefixes (`u/` and `u\`) also fold and assemble sparse items without
-densifying; even scalar reductions retain sparse storage.
+densifying; even scalar reductions retain sparse storage. Sparse storage supports
+boxed atoms, using an empty box as its fill, and `$.^:_1 y` is the inverse spelling
+that returns a dense array.
 
 ### Adverbs, rank and trains
 
@@ -253,9 +256,6 @@ This is intentionally a subset; the following are not implemented or are
 deliberately conservative:
 
 - Locales, system facilities and file/foreign conjunctions.
-- Sparse arrays are currently limited to numeric and character atoms; boxed
-  sparse conversion is not implemented. J's `$.^:_1` inverse spelling is also not
-  implemented; use `0 $. y` to densify.
 - The remaining conjunctions: inner product `+/ .*`, `@`, `&`, bond and related
   forms.
 - `#!.f` fit (copy with a specified fill) is not implemented; complex copy counts
@@ -290,7 +290,7 @@ src/test/java/...       JUnit 5 tests, including AcceptanceTest
 
 The suite covers the array model, display, lexer, parser, evaluator, arithmetic,
 comparisons, structural verbs, boxes, exact and complex types, sparse conversion,
-display, arithmetic and structural remapping, insert reductions, prefix scans, copy fills, catalog, transpose, rotate, derived verbs, insert
+display, boxed sparse conversion, inverse sparse spelling, arithmetic and structural remapping, insert reductions, prefix scans, copy fills, catalog, transpose, rotate, derived verbs, insert
 identities, assignment, explicit control flow and the REPL. `AcceptanceTest`
 checks every example from the project brief.
 

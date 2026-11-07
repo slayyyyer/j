@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 
 import j.array.JArray;
 import j.array.JFormat;
+import j.array.JType;
 import j.eval.Environment;
 import j.eval.Evaluator;
 import j.eval.Value;
@@ -46,6 +47,38 @@ class SparseTest {
 
         assertTrue(sparse.isSparse());
         assertEquals("1 | 5\n3 | 2", JFormat.format(sparse));
+    }
+
+    @Test
+    void boxedArraysConvertToSparseAndKeepTheirContents() {
+        JArray dense = JArray.boxes(
+                new int[]{3},
+                JArray.ints(new long[0]),
+                JArray.ints(1, 2),
+                JArray.ints(3, 4));
+        JArray sparse = dense.toSparse();
+
+        assertTrue(sparse.isSparse());
+        assertEquals(JType.BOX, sparse.type());
+        assertEquals(2, sparse.sparseCount());
+        assertEquals("1 2", JFormat.format(sparse.boxAt(1)));
+        assertEquals("1 | 1 2\n2 | 3 4", JFormat.format(sparse));
+        assertEquals("1 2", JFormat.format(sparse.dense().boxAt(1)));
+
+        JArray reversed = sparse.reverseItems();
+        assertTrue(reversed.isSparse());
+        assertEquals("0 | 3 4\n1 | 1 2", JFormat.format(reversed));
+    }
+
+    @Test
+    void sparseInverseSpellingDensifies() {
+        JArray dense = eval("$.^:_1 $. 3 4 $ 0 75 0 53 0 0 67 67 93 0 51 83");
+
+        assertFalse(dense.isSparse());
+        assertEquals(
+                " 0 75  0 53\n 0  0 67 67\n93  0 51 83",
+                JFormat.format(dense));
+        assertFalse(eval("$.^:_1 1 2 3").isSparse());
     }
 
     @Test

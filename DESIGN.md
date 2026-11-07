@@ -27,7 +27,9 @@ boxes combine only with the same type. An integer literal outside the `long`
 range becomes `BIGINT`; arithmetic that overflows a `long` also promotes rather
 than reporting a limit error. `JArray.toSparse` filters the default fill atom
 (zero, space, or empty box) into `Sparse`; `dense()` reconstructs a dense array.
-Conversion leaves scalar inputs dense, but reductions can produce sparse scalars.
+Boxed sparse atoms retain their nested `JArray` contents, and an empty box is the
+boxed fill. Conversion leaves scalar inputs dense, but reductions can produce
+sparse scalars.
 
 `Rational` stores a normalized numerator/denominator and supports exact
 arithmetic. `Complex` stores double real and imaginary parts. `JArray` exposes
@@ -255,12 +257,13 @@ permutation; dyadic `|.` with a vector left argument rotates successive axes.
 `#` accepts exact integer counts and complex `a j. b` counts: `a` copies the item
 and `b` appends default fills. Negative counts are a domain error, matching J.
 `$.` is the sparse conversion verb: `$. y` returns sparse storage for a dense
-array, and `0 $. y` toggles dense/sparse. Sparse-aware atom verbs preserve the fill
-and stored entries, and structural verbs remap the stored indices directly. The
-slice and assembly paths also preserve sparse cells, so rank-0 operations and
-indexed selections do not densify merely to read a cell. Insert folds sparse items
-and returns a sparse scalar when the fold reaches atom rank; Prefix assembles sparse
-cell results without expanding them.
+array, `0 $. y` toggles dense/sparse, and `$.^:_1 y` densifies a sparse array.
+Sparse-aware atom verbs preserve the fill and stored entries, and structural verbs
+remap the stored indices directly. The slice and assembly paths also preserve sparse
+cells, so rank-0 operations and indexed selections do not densify merely to read a
+cell. Boxed sparse arrays use an empty box as the fill and retain nested `JArray`
+contents. Insert folds sparse items and returns a sparse scalar when the fold reaches
+atom rank; Prefix assembles sparse cell results without expanding them.
 
 Insert asks its operand for a type-specific identity when the argument has no items.
 The implemented identities are `0` for `< > + - ~:` and `1` for
@@ -368,6 +371,4 @@ covers the brief's examples; the remaining limitations are listed in the README.
 - whether monadic `+` accepts character arrays (currently a `domain error`);
 - control words outside `if.`/`while.`/`for.`/`return.`;
 - top-level `=.` sharing the session table with `=:`;
-- `$.^:_1` is not implemented as an inverse spelling; use `0 $. y`.
-- boxed sparse conversion is not implemented (numeric and character sparse arrays are).
 - inner product `+/ .*`, `@`, `&` and related conjunctions (not implemented).

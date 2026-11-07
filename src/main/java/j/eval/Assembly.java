@@ -2,7 +2,6 @@ package j.eval;
 
 import java.util.Arrays;
 import java.util.List;
-import java.util.Objects;
 
 import j.JError;
 import j.array.JArray;
@@ -36,35 +35,33 @@ public final class Assembly {
         int[] resultShape = Shapes.concat(frameShape, cellShape);
         int total = Shapes.size(resultShape);
         int cellSize = Shapes.size(cellShape);
-        if (type != JType.BOX) {
-            boolean allSparse = true;
-            int entries = 0;
+        boolean allSparse = true;
+        int entries = 0;
+        for (JArray cell : cells) {
+            if (!cell.isSparse() || cell.type() != type
+                    || !JArray.atomEquals(cell.sparseFill(), first.sparseFill())) {
+                allSparse = false;
+                break;
+            }
+            entries += cell.sparseCount();
+        }
+        if (allSparse) {
+            int[] indices = new int[entries];
+            Object[] values = new Object[entries];
+            int at = 0;
+            int cellIndex = 0;
             for (JArray cell : cells) {
-                if (!cell.isSparse() || cell.type() != type
-                        || !Objects.equals(cell.sparseFill(), first.sparseFill())) {
-                    allSparse = false;
-                    break;
+                int base = cellIndex * cellSize;
+                int[] cellIndices = cell.sparseIndices();
+                Object[] cellValues = cell.sparseValues();
+                for (int entry = 0; entry < cellIndices.length; entry++) {
+                    indices[at] = base + cellIndices[entry];
+                    values[at] = cellValues[entry];
+                    at++;
                 }
-                entries += cell.sparseCount();
+                cellIndex++;
             }
-            if (allSparse) {
-                int[] indices = new int[entries];
-                Object[] values = new Object[entries];
-                int at = 0;
-                int cellIndex = 0;
-                for (JArray cell : cells) {
-                    int base = cellIndex * cellSize;
-                    int[] cellIndices = cell.sparseIndices();
-                    Object[] cellValues = cell.sparseValues();
-                    for (int entry = 0; entry < cellIndices.length; entry++) {
-                        indices[at] = base + cellIndices[entry];
-                        values[at] = cellValues[entry];
-                        at++;
-                    }
-                    cellIndex++;
-                }
-                return JArray.sparse(type, resultShape, first.sparseFill(), indices, values);
-            }
+            return JArray.sparse(type, resultShape, first.sparseFill(), indices, values);
         }
         Object[] data = new Object[total];
         int at = 0;

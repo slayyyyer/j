@@ -25,6 +25,7 @@ public final class Primitives {
             Map.entry("i.", new Iota()),
             Map.entry("$", new Shape()),
             Map.entry("$.", new SparseVerb()),
+            Map.entry("$.^:_1", new SparseInverseVerb()),
             Map.entry("#", new Tally()),
             Map.entry("|.", new Reverse()),
             Map.entry(",", new Ravel()),
