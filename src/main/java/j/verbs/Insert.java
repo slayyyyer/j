@@ -1,6 +1,5 @@
 package j.verbs;
 
-import j.JError;
 import j.array.JArray;
 import j.eval.Rank;
 
@@ -35,7 +34,8 @@ public final class Insert extends Verb {
         }
         int items = y.itemCount();
         if (items == 0) {
-            throw new JError("domain error");
+            JArray identity = operand.identity(y.type());
+            return y.rank() > 1 ? identity.reshape(y.itemShape()) : identity;
         }
 
         JArray accumulator = y.item(items - 1);

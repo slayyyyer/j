@@ -6,7 +6,7 @@ import j.array.JFormat;
 import j.array.JType;
 import j.eval.Rank;
 
-/** {@code u\"r}: apply {@code u} to cells of the specified rank. */
+/** {@code u"r}: apply {@code u} to cells of the specified rank. */
 public final class RankVerb extends Verb {
     private final Verb operand;
     private final int monadRank;
@@ -55,8 +55,8 @@ public final class RankVerb extends Verb {
         for (int atom = 0; atom < values.length; atom++) {
             if (spec.type() == JType.INT) {
                 long rank = spec.longAt(atom);
-                if (rank < 0) {
-                    throw new JError("rank error");
+                if (rank < Integer.MIN_VALUE) {
+                    throw new JError("limit error");
                 }
                 values[atom] = rank > Integer.MAX_VALUE ? WHOLE : (int) rank;
             } else if (spec.type() == JType.FLOAT
@@ -74,7 +74,8 @@ public final class RankVerb extends Verb {
             return new int[]{values[0], values[0], values[0]};
         }
         if (values.length == 2) {
-            return new int[]{values[0], values[1], values[1]};
+            // J: n0 n1 means monadic rank n1, left rank n0, right rank n1.
+            return new int[]{values[1], values[0], values[1]};
         }
         if (values.length == 3) {
             return new int[]{values[0], values[1], values[2]};

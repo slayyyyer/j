@@ -8,8 +8,8 @@ import j.parse.NameClassifier;
 
 /**
  * The name table. Names hold either nouns or verbs, and that class is what the
- * parser consults while reading later sentences. Local assignment is currently
- * session-global because explicit verb bodies do not exist yet.
+ * parser consults while reading later sentences. An environment may have a parent,
+ * so an explicit verb can bind local names while falling back to session globals.
  */
 public final class Environment implements NameClassifier {
     private final Map<String, Value> names = new HashMap<>();
@@ -47,5 +47,10 @@ public final class Environment implements NameClassifier {
     /** Stores a noun or verb. A later sentence sees the new part of speech. */
     public void assign(String name, Value value) {
         names.put(name, value);
+    }
+
+    /** The outermost scope, where {@code =:} stores names inside an explicit body. */
+    public Environment root() {
+        return parent == null ? this : parent.root();
     }
 }

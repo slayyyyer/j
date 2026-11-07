@@ -17,7 +17,7 @@ public final class Drop extends Verb {
 
     @Override
     public int leftRank() {
-        return 0;
+        return 1;
     }
 
     @Override
@@ -38,13 +38,33 @@ public final class Drop extends Verb {
         if (x.type() != JType.INT) {
             throw new JError("domain error");
         }
-        if (x.rank() != 0) {
+        if (x.rank() > 1) {
             throw new JError("rank error");
         }
-        long count = x.longAt(0);
-        if (count < Integer.MIN_VALUE || count > Integer.MAX_VALUE) {
+        JArray source = y.rank() == 0 ? y.ravel() : y;
+        if (x.rank() == 0) {
+            long count = x.longAt(0);
+            if (count < Integer.MIN_VALUE || count > Integer.MAX_VALUE) {
+                throw new JError("limit error");
+            }
+            return source.dropItems((int) count);
+        }
+
+        int[] counts = new int[x.size()];
+        for (int axis = 0; axis < counts.length; axis++) {
+            long count = x.longAt(axis);
+            if (count < Integer.MIN_VALUE || count > Integer.MAX_VALUE) {
+                throw new JError("limit error");
+            }
+            counts[axis] = (int) count;
+        }
+        if (counts.length > source.rank()) {
+            throw new JError("rank error");
+        }
+        try {
+            return source.dropAxes(counts);
+        } catch (IllegalArgumentException outOfRange) {
             throw new JError("limit error");
         }
-        return y.dropItems((int) count);
     }
 }

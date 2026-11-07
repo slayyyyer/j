@@ -84,12 +84,18 @@ class ComparisonTest {
     }
 
     @Test
-    void deferredMonadicComparisonMeaningsRaiseValenceError() {
-        assertEquals("valence error",
-                assertThrows(JError.class, () -> eval("= 1 2")).getMessage());
+    void monadicNubSieveAndSelfClassifyWorkOnItems() {
+        assertEquals("1 1 0 1", JFormat.format(eval("~: 'hook'")));
+        assertEquals("1 1 0 1 0", JFormat.format(eval("~: 1 2 1 3 2")));
+        assertEquals("1 0 0 0\n0 1 1 0\n0 0 0 1",
+                JFormat.format(eval("= 'hook'")));
+    }
+
+    @Test
+    void boxAndOpenRemainDeferred() {
         assertEquals("valence error",
                 assertThrows(JError.class, () -> eval("< 1 2")).getMessage());
         assertEquals("valence error",
-                assertThrows(JError.class, () -> eval("~: 1 2")).getMessage());
+                assertThrows(JError.class, () -> eval("> 1 2")).getMessage());
     }
 }

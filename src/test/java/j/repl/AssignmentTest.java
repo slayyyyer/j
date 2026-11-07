@@ -72,6 +72,22 @@ class AssignmentTest {
     }
 
     @Test
+    void explicitBodiesCanBindLocalsAndGlobals() {
+        session.defineExplicit(
+                "f =: 3 : 0",
+                java.util.List.of("a =. y + 1", "a * 2"));
+        assertEquals("8", evaluate("f 3"));
+        assertEquals("value error",
+                assertThrows(JError.class, () -> session.evaluate("a")).getMessage());
+
+        session.defineExplicit(
+                "g =: 3 : 0",
+                java.util.List.of("gv =: y", "y"));
+        assertEquals("7", evaluate("g 7"));
+        assertEquals("7", evaluate("gv"));
+    }
+
+    @Test
     void reassignmentChangesThePartOfSpeech() {
         session.evaluate("f =: +");
         assertEquals("5", evaluate("2 f 3"));

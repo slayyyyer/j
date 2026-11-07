@@ -1,11 +1,13 @@
 package j.verbs;
 
+import java.util.Arrays;
+
 import j.JError;
 import j.array.JArray;
 import j.array.JType;
 import j.array.Shapes;
 
-/** {@code i.}: monadic integers; dyadic index-of is not implemented yet. */
+/** {@code i.}: monadic integers, dyadic index-of. */
 public final class Iota extends Verb {
     public Iota() {
         super("i.");
@@ -18,7 +20,7 @@ public final class Iota extends Verb {
 
     @Override
     public int leftRank() {
-        return 1;
+        return WHOLE;
     }
 
     @Override
@@ -56,6 +58,27 @@ public final class Iota extends Verb {
             data[atom] = atom;
         }
         return JArray.ints(shape, data);
+    }
+
+    /**
+     * {@code x i. y}: the first index in {@code x} for each cell of {@code y}.
+     * Cells of {@code y} have the rank of an item of {@code x}; a cell that does
+     * not occur yields {@code #x}.
+     */
+    @Override
+    public JArray dyadCell(JArray x, JArray y) {
+        int itemRank = Math.max(0, x.rank() - 1);
+        int cellRank = Math.min(itemRank, y.rank());
+        int[] frameShape = Arrays.copyOf(y.shape(), y.rank() - cellRank);
+        int[] cellShape = Arrays.copyOfRange(y.shape(), frameShape.length, y.rank());
+        int frameSize = Shapes.size(frameShape);
+        int cellSize = Shapes.size(cellShape);
+
+        long[] indexes = new long[frameSize];
+        for (int cell = 0; cell < frameSize; cell++) {
+            indexes[cell] = Items.firstIndex(x, y.slice(cell * cellSize, cellShape));
+        }
+        return JArray.ints(frameShape, indexes);
     }
 
     private static JArray scalarIota(long limit) {

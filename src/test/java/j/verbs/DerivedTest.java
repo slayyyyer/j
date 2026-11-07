@@ -62,8 +62,17 @@ class DerivedTest {
     }
 
     @Test
-    void insertNeedsANonEmptyArgument() {
+    void insertUsesIdentitiesOnEmptyArrays() {
+        assertEquals("0", JFormat.format(eval("+/ i. 0")));
+        assertEquals("1", JFormat.format(eval("*/ i. 0")));
+        assertEquals("0 0 0", JFormat.format(eval("+/ i. 0 3")));
         assertEquals("domain error",
-                assertThrows(JError.class, () -> eval("+/ i. 0")).getMessage());
+                assertThrows(JError.class, () -> eval("-/ i. 0")).getMessage());
+    }
+
+    @Test
+    void rankSupportsNegativeAndTwoElementSpecifications() {
+        assertEquals("6 22 38", JFormat.format(eval("+/\"0 1 i. 3 4")));
+        assertEquals("6 22 38", JFormat.format(eval("+/\"_1 i. 3 4")));
     }
 }

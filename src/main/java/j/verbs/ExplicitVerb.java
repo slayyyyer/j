@@ -2,18 +2,19 @@ package j.verbs;
 
 import java.util.List;
 
+import j.JError;
 import j.array.JArray;
 import j.eval.Environment;
 import j.eval.Evaluator;
 import j.eval.Value;
-import j.parse.Expr;
+import j.parse.Phrase;
 
 /** A user-defined verb from {@code {{ ... }}} or {@code 3 : 0}. */
 public final class ExplicitVerb extends Verb {
-    private final List<Expr> body;
+    private final List<Phrase> body;
     private final Environment globals;
 
-    public ExplicitVerb(List<Expr> body, Environment globals) {
+    public ExplicitVerb(List<Phrase> body, Environment globals) {
         super("{{...}}");
         if (body.isEmpty()) {
             throw new IllegalArgumentException("an explicit verb needs a body");
@@ -55,10 +56,13 @@ public final class ExplicitVerb extends Verb {
         }
 
         Evaluator evaluator = new Evaluator(locals);
-        JArray result = null;
-        for (Expr sentence : body) {
-            result = evaluator.evaluateExpression(sentence);
+        Value result = null;
+        for (Phrase sentence : body) {
+            result = evaluator.evaluate(sentence);
         }
-        return result;
+        if (result instanceof Value.Noun noun) {
+            return noun.array();
+        }
+        throw new JError("domain error");
     }
 }

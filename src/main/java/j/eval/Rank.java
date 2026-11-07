@@ -23,7 +23,7 @@ public final class Rank {
     }
 
     public static JArray applyMonad(Verb verb, JArray y) {
-        int cellRank = Math.min(checkedRank(verb.monadRank()), y.rank());
+        int cellRank = Math.min(resolveRank(verb.monadRank(), y.rank()), y.rank());
         int[] shape = y.shape();
         int[] frameShape = Arrays.copyOf(shape, shape.length - cellRank);
         int[] cellShape = Arrays.copyOfRange(shape, frameShape.length, shape.length);
@@ -46,8 +46,8 @@ public final class Rank {
     }
 
     public static JArray applyDyad(Verb verb, JArray x, JArray y) {
-        int xCellRank = Math.min(checkedRank(verb.leftRank()), x.rank());
-        int yCellRank = Math.min(checkedRank(verb.rightRank()), y.rank());
+        int xCellRank = Math.min(resolveRank(verb.leftRank(), x.rank()), x.rank());
+        int yCellRank = Math.min(resolveRank(verb.rightRank(), y.rank()), y.rank());
 
         int[] xShape = x.shape();
         int[] yShape = y.shape();
@@ -96,11 +96,17 @@ public final class Rank {
         return xFrame;
     }
 
-    private static int checkedRank(int rank) {
-        if (rank < 0) {
-            throw new JError("rank error");
+    /**
+     * Resolves a verb rank against an argument. A negative rank asks for
+     * {@code argumentRank + rank} cell axes, clamped at zero; this is J's
+     * convention for ranks such as {@code _1}.
+     */
+    private static int resolveRank(int rank, int argumentRank) {
+        if (rank >= 0) {
+            return rank;
         }
-        return rank;
+        long resolved = (long) argumentRank + rank;
+        return resolved < 0 ? 0 : (int) resolved;
     }
 
     private static JArray prototype(JType type, int[] shape) {

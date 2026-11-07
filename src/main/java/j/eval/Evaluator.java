@@ -30,7 +30,8 @@ public final class Evaluator {
             case Phrase.Verb verb -> new Value.VerbValue(evaluateVerb(verb.verb()));
             case Phrase.Assign assign -> {
                 Value value = evaluate(assign.value());
-                environment.assign(assign.name(), value);
+                Environment target = assign.global() ? environment.root() : environment;
+                target.assign(assign.name(), value);
                 yield value;
             }
         };

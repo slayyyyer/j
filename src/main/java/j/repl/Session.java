@@ -13,7 +13,6 @@ import j.eval.Value;
 import j.lex.Lexer;
 import j.lex.Token;
 import j.lex.TokenType;
-import j.parse.Expr;
 import j.parse.NameClassifier;
 import j.parse.Parser;
 import j.parse.Phrase;
@@ -46,17 +45,17 @@ public final class Session {
         NameClassifier bodyNames =
                 name -> !name.equals("x") && !name.equals("y") && environment.isVerb(name);
 
-        List<Expr> body = new ArrayList<>();
+        List<Phrase> body = new ArrayList<>();
         for (String line : bodyLines) {
             List<Token> tokens = Lexer.lex(line);
             if (tokens.size() == 1) {
                 continue;
             }
             Phrase phrase = new Parser(tokens, bodyNames).parse();
-            if (!(phrase instanceof Phrase.Noun noun)) {
+            if (phrase instanceof Phrase.Verb) {
                 throw new JError("syntax error");
             }
-            body.add(noun.expr());
+            body.add(phrase);
         }
         if (body.isEmpty()) {
             throw new JError("syntax error");

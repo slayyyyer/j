@@ -2,6 +2,7 @@ package j.verbs;
 
 import j.JError;
 import j.array.JArray;
+import j.array.JType;
 
 /**
  * A J verb.
@@ -40,6 +41,14 @@ public abstract class Verb {
     /** Applies the verb to one pair of dyadic argument cells. */
     public JArray dyadCell(JArray x, JArray y) {
         throw new JError("valence error");
+    }
+
+    /**
+     * The identity atom used by insert over an empty array. Verbs without a
+     * defined identity keep insert's {@code domain error}.
+     */
+    public JArray identity(JType type) {
+        throw new JError("domain error");
     }
 
     @Override

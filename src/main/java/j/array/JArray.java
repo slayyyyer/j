@@ -284,25 +284,205 @@ public final class JArray {
         return remap(shape, sourceIndices);
     }
 
-    /** Takes {@code count} leading items, or trailing items when negative. */
+    /**
+     * Replicates each item according to {@code counts}. The result has a leading
+     * axis equal to the sum of the counts and the same item shape as this array.
+     */
+    public JArray copyItems(int[] counts) {
+        if (counts.length != itemCount()) {
+            throw new IllegalArgumentException("copy counts must match the item count");
+        }
+        long total = 0;
+        for (int count : counts) {
+            if (count < 0) {
+                throw new IllegalArgumentException("negative copy count");
+            }
+            total += count;
+            if (total > Integer.MAX_VALUE) {
+                throw new IllegalArgumentException("copy result is too large");
+            }
+        }
+
+        int[] newShape;
+        if (shape.length == 0) {
+            newShape = new int[]{(int) total};
+        } else {
+            newShape = shape.clone();
+            newShape[0] = (int) total;
+        }
+
+        int itemSize = itemSize();
+        int totalAtoms = Shapes.size(newShape);
+        int[] sourceIndices = new int[totalAtoms];
+        int at = 0;
+        for (int item = 0; item < itemCount(); item++) {
+            for (int copy = 0; copy < counts[item]; copy++) {
+                for (int atom = 0; atom < itemSize; atom++) {
+                    sourceIndices[at++] = item * itemSize + atom;
+                }
+            }
+        }
+        return remap(newShape, sourceIndices);
+    }
+
+    /**
+     * Takes {@code count} leading items, or trailing items when negative. An
+     * overtake fills the missing items with zeros or spaces, matching J's default
+     * numeric and literal fill.
+     */
     public JArray takeItems(int count) {
         if (shape.length == 0) {
             throw new IllegalArgumentException("take needs a non-scalar argument");
         }
         int items = shape[0];
         long magnitude = Math.abs((long) count);
-        if (magnitude > items) {
-            throw new IllegalArgumentException("take exceeds the leading axis");
+        if (magnitude > Integer.MAX_VALUE) {
+            throw new IllegalArgumentException("take result is too large");
         }
         int take = (int) magnitude;
-        int start = count >= 0 ? 0 : items - take;
         int itemSize = itemSize();
         int[] newShape = shape.clone();
         newShape[0] = take;
-        int[] sourceIndices = new int[take * itemSize];
-        for (int atom = 0; atom < sourceIndices.length; atom++) {
-            int item = start + atom / itemSize;
-            sourceIndices[atom] = item * itemSize + atom % itemSize;
+        int total = Shapes.size(newShape);
+        int fillItems = Math.max(0, take - items);
+        int start = count >= 0 ? 0 : items - Math.min(take, items);
+        int[] sourceIndices = new int[total];
+        for (int item = 0; item < take; item++) {
+            int sourceItem;
+            if (count >= 0) {
+                sourceItem = item < items ? item : -1;
+            } else {
+                sourceItem = item < fillItems ? -1 : start + (item - fillItems);
+            }
+            for (int atom = 0; atom < itemSize; atom++) {
+                sourceIndices[item * itemSize + atom] =
+                        sourceItem < 0 ? -1 : sourceItem * itemSize + atom;
+            }
+        }
+
+        return switch (type) {
+            case INT -> {
+                long[] data = new long[total];
+                for (int atom = 0; atom < total; atom++) {
+                    data[atom] = sourceIndices[atom] < 0 ? 0 : longAt(sourceIndices[atom]);
+                }
+                yield JArray.ints(newShape, data);
+            }
+            case FLOAT -> {
+                double[] data = new double[total];
+                for (int atom = 0; atom < total; atom++) {
+                    data[atom] = sourceIndices[atom] < 0 ? 0.0 : doubleAt(sourceIndices[atom]);
+                }
+                yield JArray.floats(newShape, data);
+            }
+            case CHAR -> {
+                char[] data = new char[total];
+                for (int atom = 0; atom < total; atom++) {
+                    data[atom] = sourceIndices[atom] < 0 ? ' ' : charAt(sourceIndices[atom]);
+                }
+                yield JArray.chars(newShape, data);
+            }
+        };
+    }
+
+    /**
+     * Takes along successive axes. Counts beyond the trailing axes are omitted;
+     * overtaking an axis fills with the default numeric/literal fill atom.
+     */
+    public JArray takeAxes(int[] counts) {
+        if (shape.length == 0) {
+            throw new IllegalArgumentException("take needs a non-scalar argument");
+        }
+        if (counts.length > shape.length) {
+            throw new IllegalArgumentException("take has too many axes");
+        }
+
+        int[] newShape = shape.clone();
+        int[] take = new int[counts.length];
+        int[] fill = new int[counts.length];
+        int[] shift = new int[counts.length];
+        for (int axis = 0; axis < counts.length; axis++) {
+            long magnitude = Math.abs((long) counts[axis]);
+            if (magnitude > Integer.MAX_VALUE) {
+                throw new IllegalArgumentException("take result is too large");
+            }
+            take[axis] = (int) magnitude;
+            newShape[axis] = take[axis];
+            fill[axis] = Math.max(0, take[axis] - shape[axis]);
+            shift[axis] = Math.max(0, shape[axis] - take[axis]);
+        }
+
+        int total = Shapes.size(newShape);
+        int[] destinationStrides = Shapes.strides(newShape);
+        int[] sourceStrides = Shapes.strides(shape);
+        int[] sourceIndices = new int[total];
+        for (int atom = 0; atom < total; atom++) {
+            int remainder = atom;
+            boolean filled = false;
+            int source = 0;
+            for (int axis = 0; axis < shape.length; axis++) {
+                int coordinate = remainder / destinationStrides[axis];
+                remainder %= destinationStrides[axis];
+                if (axis >= counts.length) {
+                    source += coordinate * sourceStrides[axis];
+                    continue;
+                }
+
+                int sourceCoordinate;
+                if (counts[axis] >= 0) {
+                    if (coordinate >= shape[axis]) {
+                        filled = true;
+                        break;
+                    }
+                    sourceCoordinate = coordinate;
+                } else {
+                    if (coordinate < fill[axis]) {
+                        filled = true;
+                        break;
+                    }
+                    sourceCoordinate = coordinate - fill[axis] + shift[axis];
+                }
+                source += sourceCoordinate * sourceStrides[axis];
+            }
+            sourceIndices[atom] = filled ? -1 : source;
+        }
+        return remapWithFill(newShape, sourceIndices);
+    }
+
+    /** Drops along successive axes; negative counts drop from the end. */
+    public JArray dropAxes(int[] counts) {
+        if (shape.length == 0) {
+            throw new IllegalArgumentException("drop needs a non-scalar argument");
+        }
+        if (counts.length > shape.length) {
+            throw new IllegalArgumentException("drop has too many axes");
+        }
+
+        int[] newShape = shape.clone();
+        int[] starts = new int[shape.length];
+        for (int axis = 0; axis < counts.length; axis++) {
+            long magnitude = Math.abs((long) counts[axis]);
+            if (magnitude > Integer.MAX_VALUE) {
+                throw new IllegalArgumentException("drop result is too large");
+            }
+            int dropped = (int) Math.min(magnitude, shape[axis]);
+            newShape[axis] = shape[axis] - dropped;
+            starts[axis] = counts[axis] >= 0 ? dropped : 0;
+        }
+
+        int total = Shapes.size(newShape);
+        int[] destinationStrides = Shapes.strides(newShape);
+        int[] sourceStrides = Shapes.strides(shape);
+        int[] sourceIndices = new int[total];
+        for (int atom = 0; atom < total; atom++) {
+            int remainder = atom;
+            int source = 0;
+            for (int axis = 0; axis < shape.length; axis++) {
+                int coordinate = remainder / destinationStrides[axis];
+                remainder %= destinationStrides[axis];
+                source += (coordinate + starts[axis]) * sourceStrides[axis];
+            }
+            sourceIndices[atom] = source;
         }
         return remap(newShape, sourceIndices);
     }
@@ -414,6 +594,36 @@ public final class JArray {
         return remap(newShape, sourceIndices);
     }
 
+    private JArray remapWithFill(int[] newShape, int[] sourceIndices) {
+        int destinationSize = Shapes.size(newShape);
+        if (sourceIndices.length != destinationSize) {
+            throw new IllegalArgumentException("source map has the wrong length");
+        }
+        return switch (type) {
+            case INT -> {
+                long[] data = new long[destinationSize];
+                for (int atom = 0; atom < destinationSize; atom++) {
+                    data[atom] = sourceIndices[atom] < 0 ? 0 : longAt(sourceIndices[atom]);
+                }
+                yield JArray.ints(newShape, data);
+            }
+            case FLOAT -> {
+                double[] data = new double[destinationSize];
+                for (int atom = 0; atom < destinationSize; atom++) {
+                    data[atom] = sourceIndices[atom] < 0 ? 0.0 : doubleAt(sourceIndices[atom]);
+                }
+                yield JArray.floats(newShape, data);
+            }
+            case CHAR -> {
+                char[] data = new char[destinationSize];
+                for (int atom = 0; atom < destinationSize; atom++) {
+                    data[atom] = sourceIndices[atom] < 0 ? ' ' : charAt(sourceIndices[atom]);
+                }
+                yield JArray.chars(newShape, data);
+            }
+        };
+    }
+
     private JArray remap(int[] newShape, int[] sourceIndices) {
         int destinationSize = Shapes.size(newShape);
         if (sourceIndices.length != destinationSize) {
@@ -444,12 +654,25 @@ public final class JArray {
         };
     }
 
+    /** The default fill atom: zero for numeric arrays, a space for characters. */
+    public static JArray fillAtom(JType type) {
+        return switch (type) {
+            case INT -> JArray.scalar(0L);
+            case FLOAT -> JArray.scalar(0.0);
+            case CHAR -> JArray.scalar(' ');
+        };
+    }
+
     private static JArray filled(JType type, int[] shape) {
         int size = Shapes.size(shape);
         return switch (type) {
             case INT -> JArray.ints(shape, new long[size]);
             case FLOAT -> JArray.floats(shape, new double[size]);
-            case CHAR -> JArray.chars(shape, new char[size]);
+            case CHAR -> {
+                char[] data = new char[size];
+                Arrays.fill(data, ' ');
+                yield JArray.chars(shape, data);
+            }
         };
     }
 

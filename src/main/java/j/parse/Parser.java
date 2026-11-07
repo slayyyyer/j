@@ -203,10 +203,10 @@ public final class Parser {
         NameClassifier bodyNames =
                 name -> !name.equals("x") && !name.equals("y") && names.isVerb(name);
         Phrase body = new Parser(bodyTokens, bodyNames).parse();
-        if (!(body instanceof Phrase.Noun noun)) {
+        if (body instanceof Phrase.Verb) {
             throw syntax(open);
         }
-        return new VerbExpr.Explicit(List.of(noun.expr()));
+        return new VerbExpr.Explicit(List.of(body));
     }
 
     private void applyAdverb(List<Term> terms, Adverb adverb, Token token) {

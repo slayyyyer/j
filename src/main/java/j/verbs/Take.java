@@ -4,7 +4,7 @@ import j.JError;
 import j.array.JArray;
 import j.array.JType;
 
-/** {@code {.}: monadic head, dyadic take. */
+/** {@code {.}: monadic head, dyadic take with fill. */
 public final class Take extends Verb {
     public Take() {
         super("{.");
@@ -17,7 +17,7 @@ public final class Take extends Verb {
 
     @Override
     public int leftRank() {
-        return 0;
+        return 1;
     }
 
     @Override
@@ -31,7 +31,8 @@ public final class Take extends Verb {
             return y;
         }
         if (y.itemCount() == 0) {
-            throw new JError("length error");
+            JArray fill = JArray.fillAtom(y.type());
+            return y.rank() > 1 ? fill.reshape(y.itemShape()) : fill;
         }
         return y.item(0);
     }
@@ -41,17 +42,33 @@ public final class Take extends Verb {
         if (x.type() != JType.INT) {
             throw new JError("domain error");
         }
-        if (x.rank() != 0) {
+        if (x.rank() > 1) {
             throw new JError("rank error");
         }
-        long count = x.longAt(0);
-        if (count < Integer.MIN_VALUE || count > Integer.MAX_VALUE) {
-            throw new JError("limit error");
-        }
+        JArray source = y.rank() == 0 ? y.ravel() : y;
         try {
-            return y.takeItems((int) count);
+            if (x.rank() == 0) {
+                long count = x.longAt(0);
+                if (count < Integer.MIN_VALUE || count > Integer.MAX_VALUE) {
+                    throw new JError("limit error");
+                }
+                return source.takeItems((int) count);
+            }
+
+            int[] counts = new int[x.size()];
+            for (int axis = 0; axis < counts.length; axis++) {
+                long count = x.longAt(axis);
+                if (count < Integer.MIN_VALUE || count > Integer.MAX_VALUE) {
+                    throw new JError("limit error");
+                }
+                counts[axis] = (int) count;
+            }
+            if (counts.length > source.rank()) {
+                throw new JError("rank error");
+            }
+            return source.takeAxes(counts);
         } catch (IllegalArgumentException outOfRange) {
-            throw new JError("length error");
+            throw new JError("limit error");
         }
     }
 }

@@ -2,10 +2,30 @@ package j.verbs;
 
 import j.array.JArray;
 
-/** {@code =}: monadic self-classify (not implemented yet), dyadic equality. */
-public final class Equal extends AtomVerb {
+/** {@code =}: monadic self-classify, dyadic equality. */
+public final class Equal extends Verb {
     public Equal() {
         super("=");
+    }
+
+    @Override
+    public int monadRank() {
+        return WHOLE;
+    }
+
+    @Override
+    public int leftRank() {
+        return 0;
+    }
+
+    @Override
+    public int rightRank() {
+        return 0;
+    }
+
+    @Override
+    public JArray monadCell(JArray y) {
+        return Items.selfClassify(y);
     }
 
     @Override

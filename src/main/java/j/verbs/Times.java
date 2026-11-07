@@ -1,5 +1,6 @@
 package j.verbs;
 
+import j.JError;
 import j.array.JArray;
 import j.array.JType;
 
@@ -29,5 +30,14 @@ public final class Times extends AtomVerb {
             return JArray.scalar(Numeric.multiply(x.longAt(0), y.longAt(0)));
         }
         return JArray.scalar(x.numericAt(0) * y.numericAt(0));
+    }
+
+    @Override
+    public JArray identity(JType type) {
+        return switch (type) {
+            case INT -> JArray.scalar(1L);
+            case FLOAT -> JArray.scalar(1.0);
+            case CHAR -> throw new JError("domain error");
+        };
     }
 }
