@@ -8,14 +8,14 @@ compatibility and does not wrap an existing implementation.
 
 ## Status
 
-**Milestone 1 of 9 complete**: the array data model and J display formatting.
-There is no tokenizer, evaluator or REPL yet. See [DESIGN.md](DESIGN.md) for the
-architecture and the plan.
+**Milestones 1–2 of 9 complete**: the array data model, J display formatting, and
+the tokenizer. There is no parser, evaluator or REPL yet. See [DESIGN.md](DESIGN.md)
+for the architecture and the plan.
 
 | Milestone | Description | Status |
 |-----------|-------------|--------|
 | 1 | `JArray` + J display format + tests | done |
-| 2 | Tokenizer (`_` negatives, `NB.` comments, strings) | planned |
+| 2 | Tokenizer (`_` negatives, `NB.` comments, strings) | done |
 | 3 | Parser/evaluator for nouns and verbs, REPL | planned |
 | 4 | Arithmetic and comparison with scalar extension | planned |
 | 5 | Structural verbs (iota, shape, ravel, tally, reverse/rotate, index, take/drop) | planned |
@@ -60,21 +60,39 @@ Supported:
   matrix columns, blank lines between the planes of rank 3+ arrays, and character
   arrays shown as text.
 
-Not yet implemented: tokens, parsing, evaluation, verbs, assignment, the REPL.
+The `j.lex` package tokenizes a sentence:
+
+- integer and float literals, including `_3`, `_3.5`, `1e_5`, `_` (infinity),
+  `__` (negative infinity), and `_.` (NaN);
+- names such as `mean`, `beta_2`, and `x`;
+- the subset's primitives, matched longest-first (`{.`, `|:`, `i.`, ...). Adverbs
+  stay separate: `+/` is the verb `+` and the adverb `/`;
+- quoted strings with doubled-quote escapes (`'don''t'`), including empty strings;
+- `NB.` comments to the end of the line;
+- `=:` and `=.` assignments, parentheses, and `{{` / `}}` direct-definition
+  delimiters.
+
+Every token carries its 1-based column. Malformed literals and unknown characters
+raise `spelling error`; an integer literal outside the 64-bit range raises
+`limit error`. J numeric suffix forms (`3x`, `2j3`, `2r3`) are outside this subset
+and are reported as spelling errors.
+
+Not yet implemented: parsing, evaluation, verbs, assignment, the REPL.
 
 ## Project layout
 
 ```
+src/main/java/j         JError (shared language error)
 src/main/java/j/array   JArray, JType, Shapes, JFormat
-src/main/java/j/lex     tokenizer and tokens
+src/main/java/j/lex     Lexer, Token, TokenType
 src/main/java/j/parse   AST and parser
-src/main/java/j/eval    evaluator, environment, rank machinery, JError
+src/main/java/j/eval    evaluator, environment, rank machinery
 src/main/java/j/verbs   primitive and derived verbs
 src/main/java/j/repl    command-line REPL
 src/test/java/...       JUnit 5 tests
 ```
 
-Only `j.array` exists today; the other packages arrive with their milestones.
+The array and lexer packages exist today; the others arrive with their milestones.
 
 ## Display notes
 
@@ -85,6 +103,11 @@ planes) and the padding of the first matrix column are also implementation decis
 to confirm. These will be checked with J and corrected as the project grows.
 
 ## Feature checklist
+
+Core:
+
+- [x] `JArray` model and J display format
+- [x] Tokenizer (`_` negatives, `NB.` comments, strings, primitives, columns)
 
 Primitives (monadic / dyadic where applicable):
 

@@ -46,6 +46,13 @@ compared with a real interpreter.
 `PRIMITIVE`, `LPAREN`, `RPAREN`, `ASSIGN_GLOBAL` (`=:`), `ASSIGN_LOCAL` (`=.`),
 `LBRACE2`/`RBRACE2` (`{{`/`}}`, for direct definition), and `EOF`.
 
+Each token records its exact spelling, a 1-based column, and a parsed `JArray` value
+for `NUMBER` and `STRING` tokens. The lexer throws `j.JError` with `spelling error`
+(and the offending column) for malformed literals, unterminated strings, unsupported
+numeric suffixes, or unknown characters. An integer literal outside the `long` range
+throws `limit error`. Numeric literals must be separated from adjacent words by
+whitespace or punctuation: `3x` is not three followed by a name.
+
 - Primitive words are matched longest-first from an explicit table: `=:` `=.` `{.`
   `}.` `|.` `|:` `i.` `~:` `<:` `>:` `@:` `@` `&` `.` `:` `"` `/` `\` `~` ... plus
   the one-character arithmetic and structural primitives.
@@ -185,8 +192,9 @@ to arithmetic throw `domain error`.
      `frameShape + resultCellShape`; all cells must produce the same shape.
 - Dyad: compute both frames/cells; frames must have equal shape, or one frame must
   be empty (a scalar) and is broadcast. Unequal frames -> `length error`.
-- Errors are `JError` with J's wording: `domain error`, `length error`, `rank error`,
-  `index error`, `value error`, `valence error`, `syntax error`, `limit error`.
+- Errors are `j.JError` with J's wording: `domain error`, `length error`,
+  `rank error`, `index error`, `value error`, `valence error`, `syntax error`,
+  `spelling error`, `limit error`. Lexical and syntax errors carry a 1-based column.
   The REPL catches them, prints the message, and keeps going.
 
 Names live in a global environment for now; `=.` locals are scoped to explicit verb
