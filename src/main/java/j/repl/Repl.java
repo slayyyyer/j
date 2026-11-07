@@ -6,6 +6,8 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 
 import j.JError;
 
@@ -41,7 +43,31 @@ public final class Repl {
             }
 
             try {
-                session.evaluate(line).ifPresent(output::println);
+                if (session.isExplicitDefinitionStart(line)) {
+                    List<String> body = new ArrayList<>();
+                    while (true) {
+                        output.print("   ");
+                        output.flush();
+
+                        String bodyLine;
+                        try {
+                            bodyLine = reader.readLine();
+                        } catch (IOException failure) {
+                            return;
+                        }
+                        if (bodyLine == null) {
+                            output.println();
+                            return;
+                        }
+                        if (bodyLine.trim().equals(")")) {
+                            break;
+                        }
+                        body.add(bodyLine);
+                    }
+                    session.defineExplicit(line, body);
+                } else {
+                    session.evaluate(line).ifPresent(output::println);
+                }
             } catch (JError error) {
                 output.println("|" + error.getMessage());
             }

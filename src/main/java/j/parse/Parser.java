@@ -18,8 +18,9 @@ import j.verbs.Verb;
  * {@code verb noun} is a monad and {@code noun verb noun} is a dyad. This is what
  * makes {@code 2 * 3 + 4} mean {@code 2 * (3 + 4)}.
  *
- * <p>A phrase containing only verbs is a verb value. Longer trains are not built
- * yet; they belong to the trains milestone.
+ * <p>Adverbs and the rank conjunction are applied while scanning, so they bind
+ * tighter than application. A phrase containing only verbs is a verb value: one
+ * verb alone, or a hook/fork train when two or more remain.
  */
 public final class Parser {
     private final List<Token> tokens;
@@ -40,12 +41,37 @@ public final class Parser {
         if (first.type() == TokenType.EOF) {
             throw syntax(first);
         }
-        Phrase phrase = parsePhrase();
+        Phrase phrase = parseEntry();
         Token trailing = peek();
         if (trailing.type() != TokenType.EOF) {
             throw syntax(trailing);
         }
         return phrase;
+    }
+
+    private Phrase parseEntry() {
+        if (peek().type() == TokenType.NAME && isAssignment(peek(1))) {
+            return parseAssignment();
+        }
+        return parsePhrase();
+    }
+
+    private Phrase parseAssignment() {
+        Token name = next();
+        Token operator = next();
+        if (peek().type() == TokenType.EOF || peek().type() == TokenType.RPAREN) {
+            throw syntax(peek());
+        }
+        Phrase value = parseEntry();
+        return new Phrase.Assign(
+                name.text(),
+                operator.type() == TokenType.ASSIGN_GLOBAL,
+                value);
+    }
+
+    private static boolean isAssignment(Token token) {
+        return token.type() == TokenType.ASSIGN_GLOBAL
+                || token.type() == TokenType.ASSIGN_LOCAL;
     }
 
     private Phrase parsePhrase() {
@@ -72,12 +98,22 @@ public final class Parser {
                         terms.add(new Term.NounTerm(new Expr.Ref(token.text()), token.column()));
                     }
                 }
+                case LBRACE2 ->
+                        terms.add(new Term.VerbTerm(parseExplicitVerb(token), token.column()));
                 case PRIMITIVE -> {
-                    Verb verb = Primitives.lookup(token.text());
-                    if (verb == null) {
-                        throw syntax(token);
+                    String spelling = token.text();
+                    Adverb adverb = Adverb.forSpelling(spelling);
+                    if (adverb != null) {
+                        applyAdverb(terms, adverb, token);
+                    } else if (spelling.equals("\"")) {
+                        applyRank(terms, token);
+                    } else {
+                        Verb verb = Primitives.lookup(spelling);
+                        if (verb == null) {
+                            throw syntax(token);
+                        }
+                        terms.add(new Term.VerbTerm(new VerbExpr.Lit(verb), token.column()));
                     }
-                    terms.add(new Term.VerbTerm(new VerbExpr.Lit(verb), token.column()));
                 }
                 default -> throw syntax(token);
             }
@@ -93,10 +129,11 @@ public final class Parser {
         List<Term> terms = groupNouns(rawTerms);
 
         if (terms.stream().allMatch(term -> term instanceof Term.VerbTerm)) {
-            if (terms.size() != 1) {
-                throw syntaxAt(terms.get(1).column());
-            }
-            return new Phrase.Verb(((Term.VerbTerm) terms.get(0)).verb());
+            List<VerbExpr> verbs = terms.stream()
+                    .map(term -> ((Term.VerbTerm) term).verb())
+                    .toList();
+            VerbExpr verb = verbs.size() == 1 ? verbs.get(0) : new VerbExpr.Train(verbs);
+            return new Phrase.Verb(verb);
         }
 
         while (terms.size() > 1) {
@@ -135,6 +172,109 @@ public final class Parser {
             return new Phrase.Noun(noun.expr());
         }
         return new Phrase.Verb(((Term.VerbTerm) only).verb());
+    }
+
+    private VerbExpr.Explicit parseExplicitVerb(Token open) {
+        int depth = 1;
+        int cursor = index;
+        while (cursor < tokens.size()) {
+            Token token = tokens.get(cursor);
+            if (token.type() == TokenType.LBRACE2) {
+                depth++;
+            } else if (token.type() == TokenType.RBRACE2) {
+                depth--;
+                if (depth == 0) {
+                    break;
+                }
+            } else if (token.type() == TokenType.EOF) {
+                break;
+            }
+            cursor++;
+        }
+
+        if (cursor >= tokens.size() || tokens.get(cursor).type() != TokenType.RBRACE2) {
+            throw syntax(open);
+        }
+
+        List<Token> bodyTokens = new ArrayList<>(tokens.subList(index, cursor));
+        bodyTokens.add(new Token(TokenType.EOF, "", null, open.column()));
+        index = cursor + 1;
+
+        NameClassifier bodyNames =
+                name -> !name.equals("x") && !name.equals("y") && names.isVerb(name);
+        Phrase body = new Parser(bodyTokens, bodyNames).parse();
+        if (!(body instanceof Phrase.Noun noun)) {
+            throw syntax(open);
+        }
+        return new VerbExpr.Explicit(List.of(noun.expr()));
+    }
+
+    private void applyAdverb(List<Term> terms, Adverb adverb, Token token) {
+        if (terms.isEmpty()
+                || !(terms.get(terms.size() - 1) instanceof Term.VerbTerm operand)) {
+            throw syntax(token);
+        }
+        terms.set(
+                terms.size() - 1,
+                new Term.VerbTerm(
+                        new VerbExpr.WithAdverb(operand.verb(), adverb),
+                        operand.column()));
+    }
+
+    private void applyRank(List<Term> terms, Token token) {
+        if (terms.isEmpty()
+                || !(terms.get(terms.size() - 1) instanceof Term.VerbTerm operand)) {
+            throw syntax(token);
+        }
+        Expr ranks = parseRankSpec();
+        terms.set(
+                terms.size() - 1,
+                new Term.VerbTerm(
+                        new VerbExpr.WithRank(operand.verb(), ranks),
+                        operand.column()));
+    }
+
+    private Expr parseRankSpec() {
+        List<Expr> parts = new ArrayList<>();
+
+        rankSpec:
+        while (true) {
+            Token token = peek();
+            switch (token.type()) {
+                case NUMBER, STRING -> {
+                    next();
+                    parts.add(new Expr.Lit(token.literal()));
+                }
+                case NAME -> {
+                    if (names.isVerb(token.text())) {
+                        break rankSpec;
+                    }
+                    next();
+                    parts.add(new Expr.Ref(token.text()));
+                }
+                case LPAREN -> {
+                    next();
+                    Phrase inner = parsePhrase();
+                    Token close = peek();
+                    if (close.type() != TokenType.RPAREN) {
+                        throw syntax(close);
+                    }
+                    next();
+                    if (!(inner instanceof Phrase.Noun noun)) {
+                        throw syntax(token);
+                    }
+                    parts.add(noun.expr());
+                }
+                default -> {
+                    break rankSpec;
+                }
+            }
+        }
+
+        if (parts.isEmpty()) {
+            throw syntax(peek());
+        }
+        return parts.size() == 1 ? parts.get(0) : new Expr.Strand(parts);
     }
 
     private static List<Term> groupNouns(List<Term> terms) {
@@ -179,6 +319,7 @@ public final class Parser {
         return switch (phrase) {
             case Phrase.Noun noun -> new Term.NounTerm(noun.expr(), column);
             case Phrase.Verb verb -> new Term.VerbTerm(verb.verb(), column);
+            case Phrase.Assign ignored -> throw new JError("syntax error", column);
         };
     }
 
@@ -188,6 +329,10 @@ public final class Parser {
 
     private Token peek() {
         return tokens.get(index);
+    }
+
+    private Token peek(int offset) {
+        return tokens.get(Math.min(index + offset, tokens.size() - 1));
     }
 
     private static JError syntax(Token token) {

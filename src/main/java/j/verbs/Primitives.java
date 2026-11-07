@@ -5,8 +5,9 @@ import java.util.Map;
 /**
  * The primitive verbs implemented so far.
  *
- * <p>Milestone 4 registers arithmetic ({@code + - * % ^}) and comparisons
- * ({@code = < > <: >: ~:}). Structural and derived verbs arrive later.
+ * <p>Milestones 4–5 register arithmetic ({@code + - * % ^}), comparisons
+ * ({@code = < > <: >: ~:}), and the initial structural verbs. Derived verbs and
+ * the remaining structural meanings arrive later.
  */
 public final class Primitives {
     private static final Map<String, Verb> VERBS = Map.ofEntries(
@@ -20,7 +21,16 @@ public final class Primitives {
             Map.entry(">", new Greater()),
             Map.entry("<:", new LessEqual()),
             Map.entry(">:", new GreaterEqual()),
-            Map.entry("~:", new NotEqual()));
+            Map.entry("~:", new NotEqual()),
+            Map.entry("i.", new Iota()),
+            Map.entry("$", new Shape()),
+            Map.entry("#", new Tally()),
+            Map.entry("|.", new Reverse()),
+            Map.entry(",", new Ravel()),
+            Map.entry("{", new From()),
+            Map.entry("{.", new Take()),
+            Map.entry("}.", new Drop()),
+            Map.entry("|:", new Transpose()));
 
     private Primitives() {
     }

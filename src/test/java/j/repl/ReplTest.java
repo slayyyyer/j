@@ -11,6 +11,20 @@ import org.junit.jupiter.api.Test;
 
 class ReplTest {
     @Test
+    void readsMultilineExplicitDefinitions() {
+        String input = "f =: 3 : 0\ny + 1\n)\nf 2\n";
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        PrintStream output = new PrintStream(bytes, true, StandardCharsets.UTF_8);
+
+        Repl.run(
+                new ByteArrayInputStream(input.getBytes(StandardCharsets.UTF_8)),
+                output);
+
+        String shown = bytes.toString(StandardCharsets.UTF_8).replace("\r\n", "\n");
+        assertTrue(shown.contains("3\n"));
+    }
+
+    @Test
     void evaluatesLinesAndContinuesAfterAnError() {
         String input = "2 + 3\n1 +\n- 1 2\n";
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();

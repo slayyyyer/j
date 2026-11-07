@@ -9,11 +9,11 @@ import j.array.JType;
 import j.array.Shapes;
 
 /** Stacks equal-shaped cells into one array whose shape is frame + cell shape. */
-final class Assembly {
+public final class Assembly {
     private Assembly() {
     }
 
-    static JArray stack(int[] frameShape, List<JArray> cells) {
+    public static JArray stack(int[] frameShape, List<JArray> cells) {
         if (cells.isEmpty()) {
             throw new IllegalArgumentException("cannot assemble zero cells");
         }

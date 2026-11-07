@@ -1,8 +1,10 @@
 package j.parse;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
 
@@ -108,8 +110,21 @@ class ParserTest {
     }
 
     @Test
-    void rejectsUnimplementedPrimitivesAndAssignment() {
-        assertThrows(JError.class, () -> parse("2 $ 3"));
-        assertThrows(JError.class, () -> parse("a =: 1"));
+    void rejectsUnimplementedPrimitives() {
+        assertThrows(JError.class, () -> parse("2 & 3"));
+    }
+
+    @Test
+    void parsesAssignmentsAndChains() {
+        Phrase.Assign assignment = assertInstanceOf(Phrase.Assign.class, parse("a =: 2 + 3"));
+        assertEquals("a", assignment.name());
+        assertTrue(assignment.global());
+        assertInstanceOf(Phrase.Noun.class, assignment.value());
+
+        Phrase.Assign chained = assertInstanceOf(Phrase.Assign.class, parse("a =: b =: 1"));
+        assertInstanceOf(Phrase.Assign.class, chained.value());
+
+        Phrase.Assign local = assertInstanceOf(Phrase.Assign.class, parse("a =. 1"));
+        assertFalse(local.global());
     }
 }
