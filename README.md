@@ -10,13 +10,13 @@ definitions fit together. It does not wrap an existing implementation.
 
 The interpreter covers the documented practical subset: arrays and display,
 tokenization, parsing, evaluation, exact and complex numeric types, boxing,
-structural verbs, adverbs `/ \ ~`, the rank conjunction `"`, trains, assignment,
-explicit verbs with control words, catalog, generalized transpose and multi-axis
-rotate.
+sparse arrays, structural verbs, adverbs `/ \ ~`, the rank conjunction `"`, trains,
+assignment, explicit verbs with control words, catalog, generalized transpose and
+multi-axis rotate.
 
-This is still a teaching subset, not a full J replacement. Sparse arrays, locales,
-system facilities, the remaining conjunctions and a few exact display details are
-outside the current scope; see [Limitations](#limitations).
+This is still a teaching subset, not a full J replacement. Boxed sparse conversion,
+locales, system facilities, the remaining conjunctions and a few exact display
+details are outside the current scope; see [Limitations](#limitations).
 
 | Milestone | Description | Status |
 |-----------|-------------|--------|
@@ -99,6 +99,7 @@ System.out.println(m);
 - empty arrays (a shape containing a zero);
 - numeric promotion `INT -> BIGINT -> RATIONAL -> FLOAT -> COMPLEX`;
 - character arrays remain separate from numeric arrays;
+- dense and sparse storage; sparse arrays retain only non-fill atoms plus a fill atom;
 - boxed arrays, including nested boxes, drawn as bordered cells;
 - J display: `_` negatives, `_`/`__` infinities, `_.` NaN, aligned matrix
   columns, blank lines between rank 3+ planes, and character arrays shown as text.
@@ -174,7 +175,9 @@ Unless noted, these operate on the leading axis:
 - `{.` — head monadically and take dyadically, including overtake fill;
 - `}.` — behead monadically and drop dyadically;
 - `|:` — transpose monadically and generalized transpose dyadically with an axis
-  list.
+  list;
+- `$.` — convert a dense array to sparse storage monadically; `0 $. y` toggles
+  between sparse and dense.
 
 `i.` matches items and returns `#x` for a missing item. `#` supports a scalar
 count, per-item count vectors, and J complex counts `a j. b`, which copy an item
@@ -190,6 +193,23 @@ example, `{ (<1 2),(<3 4)` produces:
 2 3
 2 4
 ```
+
+A sparse array displays its flat index coordinates, a vertical bar, and the
+stored values. For example, `$. 3 4 $ 0 75 0 53 0 0 67 67 93 0 51 83` displays:
+
+```
+0 1 | 75
+0 3 | 53
+1 2 | 67
+1 3 | 67
+2 0 | 93
+2 2 | 51
+2 3 | 83
+```
+
+`0 $. s` returns the dense matrix again. Sparse arrays support the same shape,
+tally, display, and arithmetic operations as dense arrays; structural operations
+that need random access use a dense working copy.
 
 ### Adverbs, rank and trains
 
@@ -229,7 +249,10 @@ Thus `-/ i. 0` is `0`, `%/ i. 0` is `1`, `=/ i. 0` is `1`, and so on.
 This is intentionally a subset; the following are not implemented or are
 deliberately conservative:
 
-- Sparse arrays, locales, system facilities and file/foreign conjunctions.
+- Locales, system facilities and file/foreign conjunctions.
+- Sparse arrays are currently limited to numeric and character atoms; boxed
+  sparse conversion is not implemented. J's `$.^:_1` inverse spelling is also not
+  implemented; use `0 $. y` to densify.
 - The remaining conjunctions: inner product `+/ .*`, `@`, `&`, bond and related
   forms.
 - `#!.f` fit (copy with a specified fill) is not implemented; complex copy counts
@@ -250,7 +273,7 @@ deliberately conservative:
 
 ```
 src/main/java/j         JError (shared language error)
-src/main/java/j/array   JArray, JType, Rational, Complex, Shapes, JFormat
+src/main/java/j/array   JArray, JType, Rational, Complex, Sparse, Shapes, JFormat
 src/main/java/j/lex     Lexer, Token, TokenType
 src/main/java/j/parse   Expr, VerbExpr, Phrase, Statement, StatementParser,
                         Adverb, Parser, NameClassifier
@@ -263,10 +286,10 @@ src/test/java/...       JUnit 5 tests, including AcceptanceTest
 ## Tests
 
 The suite covers the array model, display, lexer, parser, evaluator, arithmetic,
-comparisons, structural verbs, boxes, exact and complex types, copy fills,
-catalog, transpose, rotate, derived verbs, insert identities, assignment,
-explicit control flow and the REPL. `AcceptanceTest` checks every example from the
-project brief.
+comparisons, structural verbs, boxes, exact and complex types, sparse conversion
+and display, copy fills, catalog, transpose, rotate, derived verbs, insert
+identities, assignment, explicit control flow and the REPL. `AcceptanceTest`
+checks every example from the project brief.
 
 ```sh
 ./gradlew test
@@ -295,4 +318,5 @@ i. 3 4             NB. 3x4 matrix of 0..11
 J's default display uses 5 significant digits for floats. This implementation
 rounds and trims in J's notation, but the precise tie-breaking and exponent
 thresholds are approximate. Rank 3+ layout (one blank line between planes) and
-the padding of matrix columns are implementation decisions.
+the padding of matrix columns are implementation decisions. Sparse display uses
+the flat index coordinates for every axis, followed by ` | ` and the stored value.

@@ -3,19 +3,23 @@ package j.array;
 import java.math.BigInteger;
 import java.util.Arrays;
 
+import j.JError;
+
 /**
  * A J noun: flat, row-major storage plus a shape.
  *
  * <p>Atoms are immutable Java objects: {@link Long}, {@link BigInteger},
  * {@link Rational}, {@link Double}, {@link Complex}, {@link Character}, or a nested
- * {@link JArray} for a box. The shape and storage are immutable; input arrays and
- * exposed shapes are copied.
+ * {@link JArray} for a box. Dense arrays keep row-major flat storage; sparse arrays
+ * keep a {@link Sparse} fill/index/value table. The shape and storage are immutable;
+ * input arrays and exposed shapes are copied.
  */
 public final class JArray {
     private final JType type;
     private final int[] shape;
     private final Object[] data;
     private final int size;
+    private final Sparse sparse;
 
     private JArray(JType type, int[] shape, Object[] data) {
         int expectedSize = Shapes.size(shape);
@@ -28,6 +32,21 @@ public final class JArray {
         this.shape = shape;
         this.data = data;
         this.size = data.length;
+        this.sparse = null;
+    }
+
+    private JArray(JType type, int[] shape, Sparse sparse) {
+        int expectedSize = Shapes.size(shape);
+        this.type = type;
+        this.shape = shape.clone();
+        this.data = null;
+        this.size = expectedSize;
+        this.sparse = sparse;
+        for (int index : sparse.indices()) {
+            if (index < 0 || index >= expectedSize) {
+                throw new IllegalArgumentException("sparse index out of bounds");
+            }
+        }
     }
 
     // ---------------------------------------------------------------- factories
@@ -202,6 +221,27 @@ public final class JArray {
         return Arrays.equals(shape, other.shape);
     }
 
+    /** Whether this array uses sparse index/value storage. */
+    public boolean isSparse() {
+        return sparse != null;
+    }
+
+    public int sparseCount() {
+        return sparse == null ? 0 : sparse.count();
+    }
+
+    public int[] sparseIndices() {
+        return sparse == null ? new int[0] : sparse.indices();
+    }
+
+    public Object[] sparseValues() {
+        return sparse == null ? new Object[0] : sparse.values();
+    }
+
+    public Object sparseFill() {
+        return sparse == null ? null : sparse.fill();
+    }
+
     /** Row-major strides into the flat storage. */
     public int[] strides() {
         return Shapes.strides(shape);
@@ -209,24 +249,24 @@ public final class JArray {
 
     public long longAt(int index) {
         requireType(JType.INT, "longAt");
-        return (Long) data[index];
+        return (Long) atomAt(index);
     }
 
     public double doubleAt(int index) {
         requireType(JType.FLOAT, "doubleAt");
-        return (Double) data[index];
+        return (Double) atomAt(index);
     }
 
     public char charAt(int index) {
         requireType(JType.CHAR, "charAt");
-        return (Character) data[index];
+        return (Character) atomAt(index);
     }
 
     /** An exact integer atom from an INT or BIGINT array. */
     public BigInteger bigAt(int index) {
         return switch (type) {
-            case INT -> BigInteger.valueOf((Long) data[index]);
-            case BIGINT -> (BigInteger) data[index];
+            case INT -> BigInteger.valueOf((Long) atomAt(index));
+            case BIGINT -> (BigInteger) atomAt(index);
             default -> throw new IllegalStateException("bigAt requires an integer array, got " + type);
         };
     }
@@ -234,9 +274,9 @@ public final class JArray {
     /** A rational atom from an INT, BIGINT or RATIONAL array. */
     public Rational rationalAt(int index) {
         return switch (type) {
-            case INT -> new Rational(BigInteger.valueOf((Long) data[index]), BigInteger.ONE);
-            case BIGINT -> new Rational((BigInteger) data[index], BigInteger.ONE);
-            case RATIONAL -> (Rational) data[index];
+            case INT -> new Rational(BigInteger.valueOf((Long) atomAt(index)), BigInteger.ONE);
+            case BIGINT -> new Rational((BigInteger) atomAt(index), BigInteger.ONE);
+            case RATIONAL -> (Rational) atomAt(index);
             default -> throw new IllegalStateException("rationalAt requires an exact array, got " + type);
         };
     }
@@ -244,11 +284,11 @@ public final class JArray {
     /** A complex atom from any numeric array. */
     public Complex complexAt(int index) {
         return switch (type) {
-            case INT -> new Complex(((Long) data[index]).doubleValue(), 0.0);
-            case BIGINT -> new Complex(((BigInteger) data[index]).doubleValue(), 0.0);
-            case RATIONAL -> new Complex(((Rational) data[index]).toDouble(), 0.0);
-            case FLOAT -> new Complex((Double) data[index], 0.0);
-            case COMPLEX -> (Complex) data[index];
+            case INT -> new Complex(((Long) atomAt(index)).doubleValue(), 0.0);
+            case BIGINT -> new Complex(((BigInteger) atomAt(index)).doubleValue(), 0.0);
+            case RATIONAL -> new Complex(((Rational) atomAt(index)).toDouble(), 0.0);
+            case FLOAT -> new Complex((Double) atomAt(index), 0.0);
+            case COMPLEX -> (Complex) atomAt(index);
             default -> throw new IllegalStateException("complexAt requires a numeric array, got " + type);
         };
     }
@@ -256,22 +296,85 @@ public final class JArray {
     /** A boxed atom. */
     public JArray boxAt(int index) {
         requireType(JType.BOX, "boxAt");
-        return (JArray) data[index];
+        return (JArray) atomAt(index);
     }
 
     /** The raw immutable atom, used by generic promotion and equality. */
     public Object atomAt(int index) {
-        return data[index];
+        return sparse == null ? data[index] : sparse.atomAt(index);
     }
 
     /** Reads an atom as a double, widening exact numeric types. Complex is excluded. */
     public double numericAt(int index) {
         return switch (type) {
-            case INT -> ((Long) data[index]).doubleValue();
-            case BIGINT -> ((BigInteger) data[index]).doubleValue();
-            case RATIONAL -> ((Rational) data[index]).toDouble();
-            case FLOAT -> (Double) data[index];
+            case INT -> ((Long) atomAt(index)).doubleValue();
+            case BIGINT -> ((BigInteger) atomAt(index)).doubleValue();
+            case RATIONAL -> ((Rational) atomAt(index)).toDouble();
+            case FLOAT -> (Double) atomAt(index);
             default -> throw new IllegalStateException("numericAt requires a real numeric array, got " + type);
+        };
+    }
+
+    /** A dense copy of this array; returns this array when it is already dense. */
+    public JArray dense() {
+        if (sparse == null) {
+            return this;
+        }
+        Object[] result = new Object[size];
+        Arrays.fill(result, sparse.fill());
+        int[] indices = sparse.indices();
+        Object[] values = sparse.values();
+        for (int entry = 0; entry < indices.length; entry++) {
+            result[indices[entry]] = values[entry];
+        }
+        return new JArray(type, shape, result);
+    }
+
+    /** Converts a dense array to sparse storage; scalars stay dense. */
+    public JArray toSparse() {
+        if (sparse != null || shape.length == 0) {
+            return this;
+        }
+        if (type == JType.BOX) {
+            throw new JError("domain error");
+        }
+
+        int count = 0;
+        for (int atom = 0; atom < size; atom++) {
+            if (!isFillAtom(atomAt(atom))) {
+                count++;
+            }
+        }
+        int[] indices = new int[count];
+        Object[] values = new Object[count];
+        int entry = 0;
+        for (int atom = 0; atom < size; atom++) {
+            Object value = atomAt(atom);
+            if (!isFillAtom(value)) {
+                indices[entry] = atom;
+                values[entry] = value;
+                entry++;
+            }
+        }
+        return new JArray(type, shape, new Sparse(fillObject(type), indices, values));
+    }
+
+    /** Converts between sparse and dense representations. */
+    public JArray toggleSparse() {
+        return sparse == null ? toSparse() : dense();
+    }
+
+    private boolean isFillAtom(Object atom) {
+        return switch (type) {
+            case INT -> atom instanceof Long value && value == 0L;
+            case BIGINT -> BigInteger.ZERO.equals(atom);
+            case RATIONAL -> Rational.ZERO.equals(atom);
+            case FLOAT -> atom instanceof Double value && value == 0.0;
+            case COMPLEX -> atom instanceof Complex value
+                    && value.real() == 0.0
+                    && value.imaginary() == 0.0;
+            case CHAR -> atom instanceof Character value && value == ' ';
+            case BOX -> false;
         };
     }
 
@@ -287,6 +390,9 @@ public final class JArray {
      * contiguous in row-major order.
      */
     public JArray slice(int offset, int[] newShape) {
+        if (sparse != null) {
+            return dense().slice(offset, newShape);
+        }
         int count = Shapes.size(newShape);
         if (offset < 0 || offset > size - count) {
             throw new IllegalArgumentException("slice out of bounds");
@@ -333,6 +439,9 @@ public final class JArray {
      * larger. Empty sources are filled with the type's default fill atom.
      */
     public JArray reshape(int[] newShape) {
+        if (sparse != null) {
+            return dense().reshape(newShape);
+        }
         int destinationSize = Shapes.size(newShape);
         if (destinationSize == 0) {
             return empty(type, newShape);
@@ -349,11 +458,17 @@ public final class JArray {
 
     /** Flattens the array into a vector. */
     public JArray ravel() {
+        if (sparse != null) {
+            return dense().ravel();
+        }
         return new JArray(type, new int[]{size}, data.clone());
     }
 
     /** Reverses the items along the leading axis. */
     public JArray reverseItems() {
+        if (sparse != null) {
+            return dense().reverseItems();
+        }
         if (shape.length == 0) {
             return this;
         }
@@ -369,6 +484,9 @@ public final class JArray {
 
     /** Rotates the leading axis left by {@code count} items. */
     public JArray rotateItems(long count) {
+        if (sparse != null) {
+            return dense().rotateItems(count);
+        }
         if (shape.length == 0 || shape[0] == 0) {
             return this;
         }
@@ -401,6 +519,9 @@ public final class JArray {
      * {@code fills[i] == b}.
      */
     public JArray copyItems(int[] copies, int[] fills) {
+        if (sparse != null) {
+            return dense().copyItems(copies, fills);
+        }
         if (copies.length != itemCount() || fills.length != itemCount()) {
             throw new IllegalArgumentException("copy counts must match the item count");
         }
@@ -448,6 +569,9 @@ public final class JArray {
      * overtake fills the missing items with the type's default fill atom.
      */
     public JArray takeItems(int count) {
+        if (sparse != null) {
+            return dense().takeItems(count);
+        }
         if (shape.length == 0) {
             throw new IllegalArgumentException("take needs a non-scalar argument");
         }
@@ -482,6 +606,9 @@ public final class JArray {
 
     /** Takes along successive axes, filling overtaken coordinates. */
     public JArray takeAxes(int[] counts) {
+        if (sparse != null) {
+            return dense().takeAxes(counts);
+        }
         if (shape.length == 0) {
             throw new IllegalArgumentException("take needs a non-scalar argument");
         }
@@ -542,6 +669,9 @@ public final class JArray {
 
     /** Drops {@code count} leading items, or trailing items when negative. */
     public JArray dropItems(int count) {
+        if (sparse != null) {
+            return dense().dropItems(count);
+        }
         if (shape.length == 0) {
             throw new IllegalArgumentException("drop needs a non-scalar argument");
         }
@@ -563,6 +693,9 @@ public final class JArray {
 
     /** Drops along successive axes; negative counts drop from the end. */
     public JArray dropAxes(int[] counts) {
+        if (sparse != null) {
+            return dense().dropAxes(counts);
+        }
         if (shape.length == 0) {
             throw new IllegalArgumentException("drop needs a non-scalar argument");
         }
@@ -601,6 +734,9 @@ public final class JArray {
 
     /** Catenates {@code other} after this array along the leading axis. */
     public JArray append(JArray other) {
+        if (sparse != null || other.sparse != null) {
+            return dense().append(other.dense());
+        }
         int[] otherShape = other.shape();
         int[] newShape;
 
@@ -640,6 +776,9 @@ public final class JArray {
 
     /** Reorders axes using the generalized-transpose permutation. */
     public JArray transposeAxes(int[] axes) {
+        if (sparse != null) {
+            return dense().transposeAxes(axes);
+        }
         if (axes.length != shape.length) {
             throw new IllegalArgumentException("axis permutation has the wrong length");
         }
@@ -676,6 +815,9 @@ public final class JArray {
 
     /** Rotates successive axes by the given item counts. */
     public JArray rotateAxes(long[] counts) {
+        if (sparse != null) {
+            return dense().rotateAxes(counts);
+        }
         if (shape.length == 0) {
             throw new IllegalArgumentException("rotate needs a non-scalar argument");
         }
@@ -858,6 +1000,9 @@ public final class JArray {
      * complex arrays cannot be promoted this way.
      */
     public JArray toFloat() {
+        if (sparse != null) {
+            return dense().toFloat();
+        }
         if (type == JType.FLOAT) {
             return this;
         }

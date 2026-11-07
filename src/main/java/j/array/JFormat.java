@@ -22,6 +22,9 @@ public final class JFormat {
     }
 
     public static String format(JArray array) {
+        if (array.isSparse()) {
+            return formatSparse(array);
+        }
         if (array.type() == JType.BOX) {
             return formatBoxes(array);
         }
@@ -35,6 +38,58 @@ public final class JFormat {
             return formatCharacters(array);
         }
         return formatNumbers(array);
+    }
+
+    /**
+     * Sparse display: aligned flat-index coordinates, a vertical bar, and the
+     * stored values. This follows J's sparse display layout.
+     */
+    private static String formatSparse(JArray array) {
+        int[] indices = array.sparseIndices();
+        Object[] values = array.sparseValues();
+        if (indices.length == 0) {
+            return "";
+        }
+
+        int rank = array.rank();
+        if (rank == 0) {
+            return formatAtom(array.type(), values.length == 0 ? array.sparseFill() : values[0]);
+        }
+
+        int[] shape = array.shape();
+        int[] strides = Shapes.strides(shape);
+        int[][] coordinates = new int[indices.length][rank];
+        int[] widths = new int[rank];
+        for (int entry = 0; entry < indices.length; entry++) {
+            int remainder = indices[entry];
+            for (int axis = 0; axis < rank; axis++) {
+                int coordinate = remainder / strides[axis];
+                remainder %= strides[axis];
+                coordinates[entry][axis] = coordinate;
+                widths[axis] = Math.max(widths[axis], Integer.toString(coordinate).length());
+            }
+        }
+
+        String[] renderedValues = new String[values.length];
+        int valueWidth = 0;
+        for (int entry = 0; entry < values.length; entry++) {
+            renderedValues[entry] = formatAtom(array.type(), values[entry]);
+            valueWidth = Math.max(valueWidth, renderedValues[entry].length());
+        }
+
+        List<String> lines = new ArrayList<>(indices.length);
+        for (int entry = 0; entry < indices.length; entry++) {
+            StringBuilder line = new StringBuilder();
+            for (int axis = 0; axis < rank; axis++) {
+                if (axis > 0) {
+                    line.append(' ');
+                }
+                line.append(padLeft(Integer.toString(coordinates[entry][axis]), widths[axis]));
+            }
+            line.append(" | ").append(padLeft(renderedValues[entry], valueWidth));
+            lines.add(line.toString());
+        }
+        return String.join("\n", lines);
     }
 
     // ---------------------------------------------------------------- characters
@@ -122,15 +177,24 @@ public final class JFormat {
     }
 
     private static String atom(JArray array, int index) {
-        return switch (array.type()) {
-            case INT -> formatLong(array.longAt(index));
-            case BIGINT -> formatBig(array.bigAt(index));
-            case RATIONAL -> formatRational(array.rationalAt(index));
-            case FLOAT -> formatDouble(array.doubleAt(index));
-            case COMPLEX -> formatComplex(array.complexAt(index));
-            case CHAR -> String.valueOf(array.charAt(index));
-            case BOX -> throw new IllegalStateException("a box cell is rendered by the box formatter");
+        return formatAtom(array.type(), array.atomAt(index));
+    }
+
+    private static String formatAtom(JType type, Object atom) {
+        return switch (type) {
+            case INT -> formatLong((Long) atom);
+            case BIGINT -> formatBig((BigInteger) atom);
+            case RATIONAL -> formatRational((Rational) atom);
+            case FLOAT -> formatDouble((Double) atom);
+            case COMPLEX -> formatComplex((Complex) atom);
+            case CHAR -> String.valueOf((Character) atom);
+            case BOX -> throw new IllegalStateException(
+                    "a box cell is rendered by the box formatter");
         };
+    }
+
+    private static String padLeft(String text, int width) {
+        return " ".repeat(Math.max(0, width - text.length())) + text;
     }
 
     private static String formatLong(long value) {

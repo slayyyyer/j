@@ -13,8 +13,11 @@ compatibility. No runtime dependencies; JUnit 5 for tests.
   `BOX` (a nested `JArray`).
 - `int[] shape`: dimensions, row-major. `[]` is a scalar, `[n]` a vector,
   `[r, c]` a matrix.
-- flat `Object[] data`, length = product(shape). The boxed storage keeps numeric
-  promotion and heterogeneous boxes in one representation.
+- flat `Object[] data` for dense arrays, length = product(shape). Boxed storage
+  keeps numeric promotion and heterogeneous boxes in one representation.
+- a nullable `Sparse sparse` for sparse arrays. `Sparse` stores a fill atom plus
+  strictly increasing flat indices and their values; `atomAt` returns the fill for
+  absent positions. Sparse arrays have the same type and shape rules as dense ones.
 - Invariants: dimensions are non-negative, the atom count equals the shape
   product, and the array is immutable. Factories copy caller arrays; `shape()`
   returns a copy.
@@ -22,7 +25,9 @@ compatibility. No runtime dependencies; JUnit 5 for tests.
 Numeric promotion is `INT < BIGINT < RATIONAL < FLOAT < COMPLEX`. Characters and
 boxes combine only with the same type. An integer literal outside the `long`
 range becomes `BIGINT`; arithmetic that overflows a `long` also promotes rather
-than reporting a limit error.
+than reporting a limit error. `JArray.toSparse` filters the default fill atom
+(zero, space, or empty box) into `Sparse`; `dense()` reconstructs a dense array.
+Sparse scalars stay dense, matching J's representation of scalars.
 
 `Rational` stores a normalized numerator/denominator and supports exact
 arithmetic. `Complex` stores double real and imaginary parts. `JArray` exposes
@@ -47,6 +52,7 @@ take/drop, append, copy and transpose) used by the structural verbs.
 - a numeric matrix is rows with per-column right alignment; planes of rank 3+ arrays
   are separated by a blank line;
 - character arrays are printed as text, without quotes;
+- sparse arrays display their flat index coordinates, ` | `, and stored values;
 - boxed arrays are drawn as bordered cells, recursively for nested boxes;
 - assignments do not print, but that is the REPL's job, not the formatter's.
 
@@ -66,8 +72,8 @@ numeric suffixes, or unknown characters. Numeric literals must be separated from
 adjacent words by whitespace or punctuation: `1_2` is not a valid negative form.
 
 - Primitive words are matched longest-first from an explicit table: `=:` `=.` `{.`
-  `}.` `|.` `|:` `i.` `~:` `<:` `>:` `@:` `@` `&` `.` `:` `"` `/` `\` `~` ... plus
-  the one-character arithmetic and structural primitives.
+  `}.` `|.` `|:` `i.` `~:` `<:` `>:` `@:` `@` `&` `$.` `.` `:` `"` `/` `\` `~` ...
+  plus the one-character arithmetic and structural primitives.
 - `/` and `\` are adverbs, not part of a verb name: `+/` lexes as `+`, `/`.
 - Numbers: `3`, `_3`, `3.5`, `_3.5`, `1e6`, `1e_5`, `_` (infinity), `__` (negative
   infinity), `_.` (NaN).
@@ -248,6 +254,9 @@ catalog has rank 1 and requires a boxed list. `|:` uses generalized axis
 permutation; dyadic `|.` with a vector left argument rotates successive axes.
 `#` accepts exact integer counts and complex `a j. b` counts: `a` copies the item
 and `b` appends default fills. Negative counts are a domain error, matching J.
+`$.` is the sparse conversion verb: `$. y` returns sparse storage for a dense
+array, and `0 $. y` toggles dense/sparse. The infrastructure densifies only when
+an operation needs random access, so sparse display and atom access stay sparse.
 
 Insert asks its operand for a type-specific identity when the argument has no items.
 The implemented identities are `0` for `< > + - ~:` and `1` for
@@ -355,4 +364,6 @@ covers the brief's examples; the remaining limitations are listed in the README.
 - whether monadic `+` accepts character arrays (currently a `domain error`);
 - control words outside `if.`/`while.`/`for.`/`return.`;
 - top-level `=.` sharing the session table with `=:`;
+- `$.^:_1` is not implemented as an inverse spelling; use `0 $. y`.
+- boxed sparse conversion is not implemented (numeric and character sparse arrays are).
 - inner product `+/ .*`, `@`, `&` and related conjunctions (not implemented).
