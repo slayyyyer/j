@@ -1,7 +1,10 @@
 package j.array;
 
 import java.math.BigInteger;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Objects;
+import java.util.TreeMap;
 
 import j.JError;
 
@@ -136,6 +139,35 @@ public final class JArray {
     /** A raw typed array, used by assembly after promotion. */
     public static JArray of(JType type, int[] shape, Object[] values) {
         return new JArray(type, shape.clone(), values.clone());
+    }
+
+    /**
+     * Builds a sparse array from unordered entries. Entries equal to the fill are
+     * discarded and duplicate indices keep the last value.
+     */
+    public static JArray sparse(
+            JType type, int[] shape, Object fill, int[] indices, Object[] values) {
+        if (type == JType.BOX) {
+            throw new JError("domain error");
+        }
+        if (indices.length != values.length) {
+            throw new IllegalArgumentException("sparse indices and values must have equal length");
+        }
+        TreeMap<Integer, Object> entries = new TreeMap<>();
+        for (int entry = 0; entry < indices.length; entry++) {
+            if (!Objects.equals(values[entry], fill)) {
+                entries.put(indices[entry], values[entry]);
+            }
+        }
+        int[] sortedIndices = new int[entries.size()];
+        Object[] sortedValues = new Object[entries.size()];
+        int at = 0;
+        for (var entry : entries.entrySet()) {
+            sortedIndices[at] = entry.getKey();
+            sortedValues[at] = entry.getValue();
+            at++;
+        }
+        return new JArray(type, shape, new Sparse(fill, sortedIndices, sortedValues));
     }
 
     /** A rank-0 integer array. */
@@ -390,12 +422,25 @@ public final class JArray {
      * contiguous in row-major order.
      */
     public JArray slice(int offset, int[] newShape) {
-        if (sparse != null) {
-            return dense().slice(offset, newShape);
-        }
         int count = Shapes.size(newShape);
         if (offset < 0 || offset > size - count) {
             throw new IllegalArgumentException("slice out of bounds");
+        }
+        if (sparse != null) {
+            int[] sourceIndices = sparse.indices();
+            Object[] sourceValues = sparse.values();
+            int[] indices = new int[sourceIndices.length];
+            Object[] values = new Object[sourceIndices.length];
+            int at = 0;
+            for (int entry = 0; entry < sourceIndices.length; entry++) {
+                if (sourceIndices[entry] >= offset && sourceIndices[entry] < offset + count) {
+                    indices[at] = sourceIndices[entry] - offset;
+                    values[at] = sourceValues[entry];
+                    at++;
+                }
+            }
+            return JArray.sparse(type, newShape.clone(), sparse.fill(),
+                    Arrays.copyOf(indices, at), Arrays.copyOf(values, at));
         }
         return new JArray(type, newShape.clone(), Arrays.copyOfRange(data, offset, offset + count));
     }
@@ -440,7 +485,7 @@ public final class JArray {
      */
     public JArray reshape(int[] newShape) {
         if (sparse != null) {
-            return dense().reshape(newShape);
+            return reshapeSparse(newShape);
         }
         int destinationSize = Shapes.size(newShape);
         if (destinationSize == 0) {
@@ -459,16 +504,14 @@ public final class JArray {
     /** Flattens the array into a vector. */
     public JArray ravel() {
         if (sparse != null) {
-            return dense().ravel();
+            return JArray.sparse(type, new int[]{size}, sparse.fill(),
+                    sparseIndices(), sparseValues());
         }
         return new JArray(type, new int[]{size}, data.clone());
     }
 
     /** Reverses the items along the leading axis. */
     public JArray reverseItems() {
-        if (sparse != null) {
-            return dense().reverseItems();
-        }
         if (shape.length == 0) {
             return this;
         }
@@ -479,14 +522,11 @@ public final class JArray {
             int offset = atom % itemSize;
             sourceIndices[atom] = (shape[0] - 1 - item) * itemSize + offset;
         }
-        return remap(shape, sourceIndices);
+        return sparse != null ? remapSparse(shape, sourceIndices) : remap(shape, sourceIndices);
     }
 
     /** Rotates the leading axis left by {@code count} items. */
     public JArray rotateItems(long count) {
-        if (sparse != null) {
-            return dense().rotateItems(count);
-        }
         if (shape.length == 0 || shape[0] == 0) {
             return this;
         }
@@ -502,7 +542,7 @@ public final class JArray {
             int offset = atom % itemSize;
             sourceIndices[atom] = ((item + shift) % items) * itemSize + offset;
         }
-        return remap(shape, sourceIndices);
+        return sparse != null ? remapSparse(shape, sourceIndices) : remap(shape, sourceIndices);
     }
 
     /**
@@ -520,7 +560,7 @@ public final class JArray {
      */
     public JArray copyItems(int[] copies, int[] fills) {
         if (sparse != null) {
-            return dense().copyItems(copies, fills);
+            return copySparseItems(copies, fills);
         }
         if (copies.length != itemCount() || fills.length != itemCount()) {
             throw new IllegalArgumentException("copy counts must match the item count");
@@ -569,11 +609,46 @@ public final class JArray {
      * overtake fills the missing items with the type's default fill atom.
      */
     public JArray takeItems(int count) {
-        if (sparse != null) {
-            return dense().takeItems(count);
-        }
         if (shape.length == 0) {
             throw new IllegalArgumentException("take needs a non-scalar argument");
+        }
+        if (sparse != null) {
+            long magnitude = Math.abs((long) count);
+            if (magnitude > Integer.MAX_VALUE) {
+                throw new IllegalArgumentException("take result is too large");
+            }
+            int take = (int) magnitude;
+            int itemSize = itemSize();
+            int[] newShape = shape.clone();
+            newShape[0] = take;
+            int fillItems = Math.max(0, take - shape[0]);
+            int start = count >= 0 ? 0 : shape[0] - Math.min(take, shape[0]);
+            int[] sourceIndices = sparse.indices();
+            Object[] sourceValues = sparse.values();
+            int[] indices = new int[sourceIndices.length];
+            Object[] values = new Object[sourceIndices.length];
+            int at = 0;
+            for (int entry = 0; entry < sourceIndices.length; entry++) {
+                int sourceItem = sourceIndices[entry] / itemSize;
+                int offset = sourceIndices[entry] % itemSize;
+                int destinationItem;
+                if (count >= 0) {
+                    if (sourceItem >= take) {
+                        continue;
+                    }
+                    destinationItem = sourceItem;
+                } else {
+                    if (sourceItem < start) {
+                        continue;
+                    }
+                    destinationItem = sourceItem - start + fillItems;
+                }
+                indices[at] = destinationItem * itemSize + offset;
+                values[at] = sourceValues[entry];
+                at++;
+            }
+            return JArray.sparse(type, newShape, sparse.fill(),
+                    Arrays.copyOf(indices, at), Arrays.copyOf(values, at));
         }
         int items = shape[0];
         long magnitude = Math.abs((long) count);
@@ -606,9 +681,6 @@ public final class JArray {
 
     /** Takes along successive axes, filling overtaken coordinates. */
     public JArray takeAxes(int[] counts) {
-        if (sparse != null) {
-            return dense().takeAxes(counts);
-        }
         if (shape.length == 0) {
             throw new IllegalArgumentException("take needs a non-scalar argument");
         }
@@ -632,6 +704,43 @@ public final class JArray {
         int total = Shapes.size(newShape);
         int[] destinationStrides = Shapes.strides(newShape);
         int[] sourceStrides = Shapes.strides(shape);
+        if (sparse != null) {
+            int[] sourceIndices = new int[total];
+            Arrays.fill(sourceIndices, -1);
+            for (int atom = 0; atom < total; atom++) {
+                int remainder = atom;
+                boolean filled = false;
+                int source = 0;
+                for (int axis = 0; axis < shape.length; axis++) {
+                    int coordinate = remainder / destinationStrides[axis];
+                    remainder %= destinationStrides[axis];
+                    if (axis >= counts.length) {
+                        source += coordinate * sourceStrides[axis];
+                        continue;
+                    }
+
+                    int sourceCoordinate;
+                    if (counts[axis] >= 0) {
+                        if (coordinate >= shape[axis]) {
+                            filled = true;
+                            break;
+                        }
+                        sourceCoordinate = coordinate;
+                    } else {
+                        if (coordinate < fill[axis]) {
+                            filled = true;
+                            break;
+                        }
+                        sourceCoordinate = coordinate - fill[axis] + shift[axis];
+                    }
+                    source += sourceCoordinate * sourceStrides[axis];
+                }
+                if (!filled) {
+                    sourceIndices[atom] = source;
+                }
+            }
+            return remapSparse(newShape, sourceIndices);
+        }
         Object fillAtom = fillObject(type);
         Object[] result = new Object[total];
         for (int atom = 0; atom < total; atom++) {
@@ -669,9 +778,6 @@ public final class JArray {
 
     /** Drops {@code count} leading items, or trailing items when negative. */
     public JArray dropItems(int count) {
-        if (sparse != null) {
-            return dense().dropItems(count);
-        }
         if (shape.length == 0) {
             throw new IllegalArgumentException("drop needs a non-scalar argument");
         }
@@ -683,6 +789,24 @@ public final class JArray {
         int itemSize = itemSize();
         int[] newShape = shape.clone();
         newShape[0] = keep;
+        if (sparse != null) {
+            int[] sourceIndices = sparse.indices();
+            Object[] sourceValues = sparse.values();
+            int[] indices = new int[sourceIndices.length];
+            Object[] values = new Object[sourceIndices.length];
+            int at = 0;
+            for (int entry = 0; entry < sourceIndices.length; entry++) {
+                int sourceItem = sourceIndices[entry] / itemSize;
+                if (sourceItem < start || sourceItem >= end) {
+                    continue;
+                }
+                indices[at] = (sourceItem - start) * itemSize + sourceIndices[entry] % itemSize;
+                values[at] = sourceValues[entry];
+                at++;
+            }
+            return JArray.sparse(type, newShape, sparse.fill(),
+                    Arrays.copyOf(indices, at), Arrays.copyOf(values, at));
+        }
         Object[] result = new Object[keep * itemSize];
         for (int atom = 0; atom < result.length; atom++) {
             int item = start + atom / itemSize;
@@ -693,9 +817,6 @@ public final class JArray {
 
     /** Drops along successive axes; negative counts drop from the end. */
     public JArray dropAxes(int[] counts) {
-        if (sparse != null) {
-            return dense().dropAxes(counts);
-        }
         if (shape.length == 0) {
             throw new IllegalArgumentException("drop needs a non-scalar argument");
         }
@@ -718,6 +839,20 @@ public final class JArray {
         int total = Shapes.size(newShape);
         int[] destinationStrides = Shapes.strides(newShape);
         int[] sourceStrides = Shapes.strides(shape);
+        if (sparse != null) {
+            int[] sourceIndices = new int[total];
+            for (int atom = 0; atom < total; atom++) {
+                int remainder = atom;
+                int source = 0;
+                for (int axis = 0; axis < shape.length; axis++) {
+                    int coordinate = remainder / destinationStrides[axis];
+                    remainder %= destinationStrides[axis];
+                    source += (coordinate + starts[axis]) * sourceStrides[axis];
+                }
+                sourceIndices[atom] = source;
+            }
+            return remapSparse(newShape, sourceIndices);
+        }
         Object[] result = new Object[total];
         for (int atom = 0; atom < total; atom++) {
             int remainder = atom;
@@ -734,10 +869,26 @@ public final class JArray {
 
     /** Catenates {@code other} after this array along the leading axis. */
     public JArray append(JArray other) {
+        int[] otherShape = other.shape();
+        if ((sparse != null || other.sparse != null)
+                && shape.length >= 1 && shape.length == otherShape.length) {
+            boolean sameItemShape = true;
+            for (int axis = 1; axis < shape.length; axis++) {
+                if (shape[axis] != otherShape[axis]) {
+                    sameItemShape = false;
+                    break;
+                }
+            }
+            if (sameItemShape) {
+                JArray sparseResult = appendSparse(other);
+                if (sparseResult != null) {
+                    return sparseResult;
+                }
+            }
+        }
         if (sparse != null || other.sparse != null) {
             return dense().append(other.dense());
         }
-        int[] otherShape = other.shape();
         int[] newShape;
 
         if (shape.length == 0 && otherShape.length == 0) {
@@ -769,6 +920,57 @@ public final class JArray {
         return new JArray(resultType, newShape, result);
     }
 
+    private JArray appendSparse(JArray other) {
+        JType resultType;
+        try {
+            resultType = promote(type, other.type);
+        } catch (IllegalArgumentException domain) {
+            return null;
+        }
+        if (resultType == JType.BOX) {
+            return null;
+        }
+        JArray left;
+        JArray right;
+        try {
+            left = sparse != null ? this : toSparse();
+            right = other.sparse != null ? other : other.toSparse();
+        } catch (JError domain) {
+            return null;
+        }
+        if (!left.isSparse() || !right.isSparse()) {
+            return null;
+        }
+
+        Object leftFill = convertAtom(left.sparseFill(), resultType);
+        Object rightFill = convertAtom(right.sparseFill(), resultType);
+        Object resultFill = Objects.equals(leftFill, rightFill)
+                ? leftFill
+                : fillObject(resultType);
+        if (!Objects.equals(leftFill, resultFill) || !Objects.equals(rightFill, resultFill)) {
+            return null;
+        }
+
+        int[] leftIndices = left.sparseIndices();
+        Object[] leftValues = left.sparseValues();
+        int[] rightIndices = right.sparseIndices();
+        Object[] rightValues = right.sparseValues();
+        int[] indices = new int[leftIndices.length + rightIndices.length];
+        Object[] values = new Object[indices.length];
+        for (int entry = 0; entry < leftIndices.length; entry++) {
+            indices[entry] = leftIndices[entry];
+            values[entry] = convertAtom(leftValues[entry], resultType);
+        }
+        for (int entry = 0; entry < rightIndices.length; entry++) {
+            int at = leftIndices.length + entry;
+            indices[at] = left.size + rightIndices[entry];
+            values[at] = convertAtom(rightValues[entry], resultType);
+        }
+        int[] newShape = shape.clone();
+        newShape[0] += other.shape()[0];
+        return JArray.sparse(resultType, newShape, resultFill, indices, values);
+    }
+
     /** Reverses the axes of an array of rank 2 or more. */
     public JArray transpose() {
         return transposeAxes(reversedAxes(shape.length));
@@ -776,9 +978,6 @@ public final class JArray {
 
     /** Reorders axes using the generalized-transpose permutation. */
     public JArray transposeAxes(int[] axes) {
-        if (sparse != null) {
-            return dense().transposeAxes(axes);
-        }
         if (axes.length != shape.length) {
             throw new IllegalArgumentException("axis permutation has the wrong length");
         }
@@ -802,7 +1001,9 @@ public final class JArray {
             }
             sourceIndices[atom] = source;
         }
-        return remap(newShape, sourceIndices);
+        return sparse != null
+                ? remapSparse(newShape, sourceIndices)
+                : remap(newShape, sourceIndices);
     }
 
     private static int[] reversedAxes(int rank) {
@@ -815,9 +1016,6 @@ public final class JArray {
 
     /** Rotates successive axes by the given item counts. */
     public JArray rotateAxes(long[] counts) {
-        if (sparse != null) {
-            return dense().rotateAxes(counts);
-        }
         if (shape.length == 0) {
             throw new IllegalArgumentException("rotate needs a non-scalar argument");
         }
@@ -835,7 +1033,7 @@ public final class JArray {
             starts[axis] = (int) shift;
         }
 
-        Object[] result = new Object[size];
+        int[] sourceIndices = new int[size];
         for (int atom = 0; atom < size; atom++) {
             int remainder = atom;
             int source = 0;
@@ -847,7 +1045,14 @@ public final class JArray {
                         : Math.floorMod(coordinate + starts[axis], shape[axis]);
                 source += sourceCoordinate * sourceStrides[axis];
             }
-            result[atom] = data[source];
+            sourceIndices[atom] = source;
+        }
+        if (sparse != null) {
+            return remapSparse(shape, sourceIndices);
+        }
+        Object[] result = new Object[size];
+        for (int atom = 0; atom < size; atom++) {
+            result[atom] = data[sourceIndices[atom]];
         }
         return new JArray(type, shape, result);
     }
@@ -862,6 +1067,112 @@ public final class JArray {
             result[atom] = data[sourceIndices[atom]];
         }
         return new JArray(type, newShape, result);
+    }
+
+    private JArray remapSparse(int[] newShape, int[] destinationToSource) {
+        int destinationSize = Shapes.size(newShape);
+        if (destinationToSource.length != destinationSize) {
+            throw new IllegalArgumentException("source map has the wrong length");
+        }
+        int[] inverse = new int[size];
+        Arrays.fill(inverse, -1);
+        for (int destination = 0; destination < destinationToSource.length; destination++) {
+            int source = destinationToSource[destination];
+            if (source >= 0) {
+                inverse[source] = destination;
+            }
+        }
+        int[] sourceIndices = sparseIndices();
+        Object[] sourceValues = sparseValues();
+        int[] indices = new int[sourceIndices.length];
+        Object[] values = new Object[sourceIndices.length];
+        int at = 0;
+        for (int entry = 0; entry < sourceIndices.length; entry++) {
+            int destination = inverse[sourceIndices[entry]];
+            if (destination >= 0) {
+                indices[at] = destination;
+                values[at] = sourceValues[entry];
+                at++;
+            }
+        }
+        return JArray.sparse(type, newShape, sparse.fill(),
+                Arrays.copyOf(indices, at), Arrays.copyOf(values, at));
+    }
+
+    private JArray reshapeSparse(int[] newShape) {
+        int destinationSize = Shapes.size(newShape);
+        if (destinationSize == 0 || size == 0) {
+            return JArray.sparse(type, newShape, sparse.fill(), new int[0], new Object[0]);
+        }
+        int[] sourceIndices = sparseIndices();
+        Object[] sourceValues = sparseValues();
+        ArrayList<Integer> indices = new ArrayList<>();
+        ArrayList<Object> values = new ArrayList<>();
+        for (int entry = 0; entry < sourceIndices.length; entry++) {
+            for (int destination = sourceIndices[entry]; destination < destinationSize;
+                    destination += size) {
+                indices.add(destination);
+                values.add(sourceValues[entry]);
+            }
+        }
+        int[] resultIndices = new int[indices.size()];
+        for (int entry = 0; entry < resultIndices.length; entry++) {
+            resultIndices[entry] = indices.get(entry);
+        }
+        return JArray.sparse(type, newShape, sparse.fill(), resultIndices, values.toArray());
+    }
+
+    private JArray copySparseItems(int[] copies, int[] fills) {
+        if (copies.length != itemCount() || fills.length != itemCount()) {
+            throw new IllegalArgumentException("copy counts must match the item count");
+        }
+        long total = 0;
+        for (int item = 0; item < copies.length; item++) {
+            if (copies[item] < 0 || fills[item] < 0) {
+                throw new IllegalArgumentException("negative copy count");
+            }
+            total += (long) copies[item] + fills[item];
+            if (total > Integer.MAX_VALUE) {
+                throw new IllegalArgumentException("copy result is too large");
+            }
+        }
+        int[] newShape;
+        if (shape.length == 0) {
+            newShape = new int[]{(int) total};
+        } else {
+            newShape = shape.clone();
+            newShape[0] = (int) total;
+        }
+
+        int itemSize = itemSize();
+        int[] sourceIndices = sparseIndices();
+        Object[] sourceValues = sparseValues();
+        ArrayList<Integer> indices = new ArrayList<>();
+        ArrayList<Object> values = new ArrayList<>();
+        int entry = 0;
+        int destinationItem = 0;
+        for (int item = 0; item < itemCount(); item++) {
+            int sourceStart = item * itemSize;
+            int sourceEnd = sourceStart + itemSize;
+            while (entry < sourceIndices.length && sourceIndices[entry] < sourceStart) {
+                entry++;
+            }
+            for (int copy = 0; copy < copies[item]; copy++) {
+                int base = (destinationItem + copy) * itemSize;
+                int scan = entry;
+                while (scan < sourceIndices.length && sourceIndices[scan] < sourceEnd) {
+                    indices.add(base + sourceIndices[scan] - sourceStart);
+                    values.add(sourceValues[scan]);
+                    scan++;
+                }
+            }
+            destinationItem += copies[item] + fills[item];
+        }
+        int[] resultIndices = new int[indices.size()];
+        for (int at = 0; at < resultIndices.length; at++) {
+            resultIndices[at] = indices.get(at);
+        }
+        return JArray.sparse(type, newShape, sparse.fill(), resultIndices, values.toArray());
     }
 
     private static JArray filled(JType type, int[] shape) {

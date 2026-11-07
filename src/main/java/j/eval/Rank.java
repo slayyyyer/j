@@ -23,6 +23,12 @@ public final class Rank {
     }
 
     public static JArray applyMonad(Verb verb, JArray y) {
+        if (y.isSparse() && verb.monadRank() == 0) {
+            JArray sparseResult = applySparseMonad(verb, y);
+            if (sparseResult != null) {
+                return sparseResult;
+            }
+        }
         int cellRank = Math.min(resolveRank(verb.monadRank(), y.rank()), y.rank());
         int[] shape = y.shape();
         int[] frameShape = Arrays.copyOf(shape, shape.length - cellRank);
@@ -46,6 +52,13 @@ public final class Rank {
     }
 
     public static JArray applyDyad(Verb verb, JArray x, JArray y) {
+        if ((x.isSparse() || y.isSparse())
+                && verb.leftRank() == 0 && verb.rightRank() == 0) {
+            JArray sparseResult = applySparseDyad(verb, x, y);
+            if (sparseResult != null) {
+                return sparseResult;
+            }
+        }
         int xCellRank = Math.min(resolveRank(verb.leftRank(), x.rank()), x.rank());
         int yCellRank = Math.min(resolveRank(verb.rightRank(), y.rank()), y.rank());
 
@@ -81,6 +94,116 @@ public final class Rank {
             results.add(verb.dyadCell(xCell, yCell));
         }
         return Assembly.stack(frameShape, results);
+    }
+
+    private static JArray applySparseMonad(Verb verb, JArray y) {
+        if (y.rank() == 0) {
+            return null;
+        }
+        try {
+            JArray fillResult = verb.monadCell(scalarOf(y.type(), y.sparseFill()));
+            if (fillResult.rank() != 0) {
+                return null;
+            }
+            JType resultType = fillResult.type();
+            Object resultFill = fillResult.atomAt(0);
+            int[] indices = y.sparseIndices();
+            Object[] values = y.sparseValues();
+            Object[] resultValues = new Object[values.length];
+            for (int entry = 0; entry < values.length; entry++) {
+                JArray result = verb.monadCell(scalarOf(y.type(), values[entry]));
+                if (result.rank() != 0 || result.type() != resultType) {
+                    return null;
+                }
+                resultValues[entry] = result.atomAt(0);
+            }
+            return JArray.sparse(resultType, y.shape(), resultFill, indices, resultValues);
+        } catch (JError domain) {
+            return null;
+        }
+    }
+
+    private static JArray applySparseDyad(Verb verb, JArray x, JArray y) {
+        if (x.rank() == 0 && y.rank() == 0) {
+            return null;
+        }
+        if (x.rank() > 0 && y.rank() > 0 && !Arrays.equals(x.shape(), y.shape())) {
+            return null;
+        }
+        JArray xSparse = x;
+        JArray ySparse = y;
+        try {
+            if (x.rank() > 0 && !x.isSparse()) {
+                xSparse = x.toSparse();
+            }
+            if (y.rank() > 0 && !y.isSparse()) {
+                ySparse = y.toSparse();
+            }
+        } catch (JError domain) {
+            return null;
+        }
+
+        int[] resultShape = x.rank() == 0 ? y.shape() : x.shape();
+        Object xFill = x.rank() == 0 ? x.atomAt(0) : xSparse.sparseFill();
+        Object yFill = y.rank() == 0 ? y.atomAt(0) : ySparse.sparseFill();
+        try {
+            JArray fillResult = verb.dyadCell(
+                    scalarOf(x.type(), xFill), scalarOf(y.type(), yFill));
+            if (fillResult.rank() != 0) {
+                return null;
+            }
+            JType resultType = fillResult.type();
+            Object resultFill = fillResult.atomAt(0);
+            int[] indices;
+            if (x.rank() == 0) {
+                indices = ySparse.sparseIndices();
+            } else if (y.rank() == 0) {
+                indices = xSparse.sparseIndices();
+            } else {
+                indices = union(xSparse.sparseIndices(), ySparse.sparseIndices());
+            }
+            Object[] resultValues = new Object[indices.length];
+            for (int entry = 0; entry < indices.length; entry++) {
+                Object xAtom = x.rank() == 0 ? xFill : xSparse.atomAt(indices[entry]);
+                Object yAtom = y.rank() == 0 ? yFill : ySparse.atomAt(indices[entry]);
+                JArray result = verb.dyadCell(scalarOf(x.type(), xAtom), scalarOf(y.type(), yAtom));
+                if (result.rank() != 0 || result.type() != resultType) {
+                    return null;
+                }
+                resultValues[entry] = result.atomAt(0);
+            }
+            return JArray.sparse(resultType, resultShape, resultFill, indices, resultValues);
+        } catch (JError domain) {
+            return null;
+        }
+    }
+
+    private static int[] union(int[] left, int[] right) {
+        int[] joined = new int[left.length + right.length];
+        int leftAt = 0;
+        int rightAt = 0;
+        int at = 0;
+        while (leftAt < left.length && rightAt < right.length) {
+            if (left[leftAt] < right[rightAt]) {
+                joined[at++] = left[leftAt++];
+            } else if (right[rightAt] < left[leftAt]) {
+                joined[at++] = right[rightAt++];
+            } else {
+                joined[at++] = left[leftAt++];
+                rightAt++;
+            }
+        }
+        while (leftAt < left.length) {
+            joined[at++] = left[leftAt++];
+        }
+        while (rightAt < right.length) {
+            joined[at++] = right[rightAt++];
+        }
+        return Arrays.copyOf(joined, at);
+    }
+
+    private static JArray scalarOf(JType type, Object atom) {
+        return JArray.of(type, new int[0], new Object[]{atom});
     }
 
     private static int[] agree(int[] xFrame, int[] yFrame) {

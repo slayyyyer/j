@@ -255,8 +255,10 @@ permutation; dyadic `|.` with a vector left argument rotates successive axes.
 `#` accepts exact integer counts and complex `a j. b` counts: `a` copies the item
 and `b` appends default fills. Negative counts are a domain error, matching J.
 `$.` is the sparse conversion verb: `$. y` returns sparse storage for a dense
-array, and `0 $. y` toggles dense/sparse. The infrastructure densifies only when
-an operation needs random access, so sparse display and atom access stay sparse.
+array, and `0 $. y` toggles dense/sparse. Sparse-aware atom verbs preserve the fill
+and stored entries, and structural verbs remap the stored indices directly. The
+slice and assembly paths also preserve sparse cells, so rank-0 operations and
+indexed selections do not densify merely to read a cell.
 
 Insert asks its operand for a type-specific identity when the argument has no items.
 The implemented identities are `0` for `< > + - ~:` and `1` for

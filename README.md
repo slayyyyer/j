@@ -208,8 +208,9 @@ stored values. For example, `$. 3 4 $ 0 75 0 53 0 0 67 67 93 0 51 83` displays:
 ```
 
 `0 $. s` returns the dense matrix again. Sparse arrays support the same shape,
-tally, display, and arithmetic operations as dense arrays; structural operations
-that need random access use a dense working copy.
+tally, display, and atom-wise arithmetic operations as dense arrays. Structural
+verbs remap stored entries directly, so reversing, transposing, taking, dropping,
+copying, reshaping, appending, and raveling sparse arrays keep sparse storage.
 
 ### Adverbs, rank and trains
 
@@ -286,8 +287,8 @@ src/test/java/...       JUnit 5 tests, including AcceptanceTest
 ## Tests
 
 The suite covers the array model, display, lexer, parser, evaluator, arithmetic,
-comparisons, structural verbs, boxes, exact and complex types, sparse conversion
-and display, copy fills, catalog, transpose, rotate, derived verbs, insert
+comparisons, structural verbs, boxes, exact and complex types, sparse conversion,
+display, arithmetic and structural remapping, copy fills, catalog, transpose, rotate, derived verbs, insert
 identities, assignment, explicit control flow and the REPL. `AcceptanceTest`
 checks every example from the project brief.
 
