@@ -37,7 +37,7 @@ public final class Shape extends Verb {
 
     @Override
     public JArray dyadCell(JArray x, JArray y) {
-        if (x.type() != JType.INT) {
+        if (!x.type().isExact()) {
             throw new JError("domain error");
         }
         if (x.rank() > 1) {
@@ -46,14 +46,11 @@ public final class Shape extends Verb {
 
         int[] shape = new int[x.size()];
         for (int axis = 0; axis < shape.length; axis++) {
-            long dimension = x.longAt(axis);
+            int dimension = Numeric.exactIntAt(x, axis);
             if (dimension < 0) {
                 throw new JError("domain error");
             }
-            if (dimension > Integer.MAX_VALUE) {
-                throw new JError("limit error");
-            }
-            shape[axis] = (int) dimension;
+            shape[axis] = dimension;
         }
         return y.reshape(shape);
     }

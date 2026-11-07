@@ -32,7 +32,7 @@ public sealed interface VerbExpr
     }
 
     /** An explicit verb, from {@code {{ ... }}} or {@code 3 : 0}. */
-    record Explicit(List<Phrase> body) implements VerbExpr {
+    record Explicit(List<Statement> body) implements VerbExpr {
         public Explicit {
             body = List.copyOf(body);
         }

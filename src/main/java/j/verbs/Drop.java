@@ -35,7 +35,7 @@ public final class Drop extends Verb {
 
     @Override
     public JArray dyadCell(JArray x, JArray y) {
-        if (x.type() != JType.INT) {
+        if (!x.type().isExact()) {
             throw new JError("domain error");
         }
         if (x.rank() > 1) {
@@ -43,7 +43,7 @@ public final class Drop extends Verb {
         }
         JArray source = y.rank() == 0 ? y.ravel() : y;
         if (x.rank() == 0) {
-            long count = x.longAt(0);
+            long count = Numeric.exactLong(x);
             if (count < Integer.MIN_VALUE || count > Integer.MAX_VALUE) {
                 throw new JError("limit error");
             }
@@ -52,7 +52,7 @@ public final class Drop extends Verb {
 
         int[] counts = new int[x.size()];
         for (int axis = 0; axis < counts.length; axis++) {
-            long count = x.longAt(axis);
+            long count = Numeric.exactLongAt(x, axis);
             if (count < Integer.MIN_VALUE || count > Integer.MAX_VALUE) {
                 throw new JError("limit error");
             }

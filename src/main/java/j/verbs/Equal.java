@@ -1,6 +1,7 @@
 package j.verbs;
 
 import j.array.JArray;
+import j.array.JType;
 
 /** {@code =}: monadic self-classify, dyadic equality. */
 public final class Equal extends Verb {
@@ -31,5 +32,10 @@ public final class Equal extends Verb {
     @Override
     public JArray dyadCell(JArray x, JArray y) {
         return Comparison.test(Comparison.Kind.EQUAL, x, y);
+    }
+
+    @Override
+    public JArray identity(JType type) {
+        return Numeric.one(type);
     }
 }

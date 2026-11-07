@@ -8,9 +8,6 @@ import j.array.JType;
 
 /** Item-level equality and classification shared by structural and comparison verbs. */
 final class Items {
-    /** J's default comparison tolerance, 2^-44. */
-    private static final double TOLERANCE = Math.scalb(1.0, -44);
-
     private Items() {
     }
 
@@ -19,8 +16,19 @@ final class Items {
         if (!a.sameShape(b)) {
             return false;
         }
+        if (a.type() == JType.BOX || b.type() == JType.BOX) {
+            if (a.type() != JType.BOX || b.type() != JType.BOX) {
+                return false;
+            }
+            for (int atom = 0; atom < a.size(); atom++) {
+                if (!equal(a.boxAt(atom), b.boxAt(atom))) {
+                    return false;
+                }
+            }
+            return true;
+        }
         if (a.type() == JType.CHAR || b.type() == JType.CHAR) {
-            if (a.type() != b.type()) {
+            if (a.type() != JType.CHAR || b.type() != JType.CHAR) {
                 return false;
             }
             for (int atom = 0; atom < a.size(); atom++) {
@@ -30,34 +38,15 @@ final class Items {
             }
             return true;
         }
-        if (a.type() == JType.INT && b.type() == JType.INT) {
-            for (int atom = 0; atom < a.size(); atom++) {
-                if (a.longAt(atom) != b.longAt(atom)) {
-                    return false;
-                }
-            }
-            return true;
+        if (!a.type().isNumeric() || !b.type().isNumeric()) {
+            return false;
         }
         for (int atom = 0; atom < a.size(); atom++) {
-            if (!numericEqual(a.numericAt(atom), b.numericAt(atom))) {
+            if (!Numeric.equalAtoms(a.atomAt(atom), b.atomAt(atom))) {
                 return false;
             }
         }
         return true;
-    }
-
-    private static boolean numericEqual(double left, double right) {
-        if (Double.isNaN(left) || Double.isNaN(right)) {
-            return false;
-        }
-        if (left == right) {
-            return true;
-        }
-        if (Double.isInfinite(left) || Double.isInfinite(right)) {
-            return false;
-        }
-        return Math.abs(left - right)
-                <= TOLERANCE * Math.max(Math.abs(left), Math.abs(right));
     }
 
     /** The first-occurrence items of {@code y}, in order. */

@@ -69,10 +69,13 @@ class ComparisonTest {
         assertEquals(JType.FLOAT, decremented.type());
         assertEquals(1.5, decremented.doubleAt(0));
 
-        assertEquals("limit error",
-                assertThrows(JError.class, () -> eval("<: _9223372036854775808")).getMessage());
-        assertEquals("limit error",
-                assertThrows(JError.class, () -> eval(">: 9223372036854775807")).getMessage());
+        JArray lower = eval("<: _9223372036854775808");
+        assertEquals(JType.BIGINT, lower.type());
+        assertEquals("_9223372036854775809", JFormat.format(lower));
+
+        JArray upper = eval(">: 9223372036854775807");
+        assertEquals(JType.BIGINT, upper.type());
+        assertEquals("9223372036854775808", JFormat.format(upper));
     }
 
     @Test
@@ -92,10 +95,10 @@ class ComparisonTest {
     }
 
     @Test
-    void boxAndOpenRemainDeferred() {
-        assertEquals("valence error",
-                assertThrows(JError.class, () -> eval("< 1 2")).getMessage());
-        assertEquals("valence error",
-                assertThrows(JError.class, () -> eval("> 1 2")).getMessage());
+    void boxAndOpenWork() {
+        JArray boxed = eval("< 1 2");
+        assertEquals(JType.BOX, boxed.type());
+        assertEquals("+---+\n|1 2|\n+---+", JFormat.format(boxed));
+        assertEquals("1 2", JFormat.format(eval("> < 1 2")));
     }
 }

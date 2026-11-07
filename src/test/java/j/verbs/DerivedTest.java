@@ -66,8 +66,7 @@ class DerivedTest {
         assertEquals("0", JFormat.format(eval("+/ i. 0")));
         assertEquals("1", JFormat.format(eval("*/ i. 0")));
         assertEquals("0 0 0", JFormat.format(eval("+/ i. 0 3")));
-        assertEquals("domain error",
-                assertThrows(JError.class, () -> eval("-/ i. 0")).getMessage());
+        assertEquals("0", JFormat.format(eval("-/ i. 0")));
     }
 
     @Test

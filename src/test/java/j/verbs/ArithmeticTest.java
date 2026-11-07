@@ -88,11 +88,14 @@ class ArithmeticTest {
     }
 
     @Test
-    void reportsIntegerOverflow() {
-        assertEquals("limit error",
-                assertThrows(JError.class, () -> eval("2 * 4611686018427387904")).getMessage());
-        assertEquals("limit error",
-                assertThrows(JError.class, () -> eval("2 ^ 63")).getMessage());
+    void promotesIntegerOverflowToExtendedIntegers() {
+        JArray product = eval("2 * 4611686018427387904");
+        assertEquals(JType.BIGINT, product.type());
+        assertEquals("9223372036854775808", JFormat.format(product));
+
+        JArray power = eval("2 ^ 63");
+        assertEquals(JType.BIGINT, power.type());
+        assertEquals("9223372036854775808", JFormat.format(power));
         assertEquals(4611686018427387904L, eval("2 ^ 62").longAt(0));
     }
 

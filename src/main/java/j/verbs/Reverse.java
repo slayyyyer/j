@@ -2,7 +2,6 @@ package j.verbs;
 
 import j.JError;
 import j.array.JArray;
-import j.array.JType;
 
 /** {@code |.}: monadic reverse, dyadic rotate. */
 public final class Reverse extends Verb {
@@ -17,7 +16,7 @@ public final class Reverse extends Verb {
 
     @Override
     public int leftRank() {
-        return 0;
+        return 1;
     }
 
     @Override
@@ -32,12 +31,27 @@ public final class Reverse extends Verb {
 
     @Override
     public JArray dyadCell(JArray x, JArray y) {
-        if (x.type() != JType.INT) {
+        if (!x.type().isExact()) {
             throw new JError("domain error");
         }
-        if (x.rank() != 0) {
+        if (x.rank() > 1) {
             throw new JError("rank error");
         }
-        return y.rotateItems(x.longAt(0));
+        if (x.rank() == 0) {
+            return y.rotateItems(Numeric.exactLong(x));
+        }
+        if (x.size() > y.rank()) {
+            throw new JError("rank error");
+        }
+
+        long[] counts = new long[x.size()];
+        for (int axis = 0; axis < counts.length; axis++) {
+            counts[axis] = Numeric.exactLongAt(x, axis);
+        }
+        try {
+            return y.rotateAxes(counts);
+        } catch (IllegalArgumentException outOfRange) {
+            throw new JError("rank error");
+        }
     }
 }

@@ -16,6 +16,8 @@ import j.lex.TokenType;
 import j.parse.NameClassifier;
 import j.parse.Parser;
 import j.parse.Phrase;
+import j.parse.Statement;
+import j.parse.StatementParser;
 import j.verbs.ExplicitVerb;
 
 /**
@@ -36,27 +38,47 @@ public final class Session {
         }
     }
 
+    /** Whether a line starts a multi-line {@code name =: {{ ... }}} definition. */
+    public boolean isDirectDefinitionStart(String line) {
+        try {
+            parseDirectHeader(Lexer.lex(line));
+            return true;
+        } catch (JError malformed) {
+            return false;
+        }
+    }
+
     /**
      * Defines a verb from a {@code 3 : 0} header and body lines. Each non-empty line
      * is one sentence; the last sentence's noun is the result.
      */
     public void defineExplicit(String header, List<String> bodyLines) {
         DefinitionHeader definition = parseDefinitionHeader(Lexer.lex(header));
-        NameClassifier bodyNames =
-                name -> !name.equals("x") && !name.equals("y") && environment.isVerb(name);
+        define(definition, bodyLines);
+    }
 
-        List<Phrase> body = new ArrayList<>();
-        for (String line : bodyLines) {
-            List<Token> tokens = Lexer.lex(line);
-            if (tokens.size() == 1) {
-                continue;
+    /**
+     * Defines a multi-line direct definition. The closing {@code }}} may be on its
+     * own line or at the end of the last body line.
+     */
+    public void defineDirect(String header, List<String> bodyLines) {
+        DefinitionHeader definition = parseDirectHeader(Lexer.lex(header));
+        List<String> body = new ArrayList<>(bodyLines);
+        if (!body.isEmpty()) {
+            int last = body.size() - 1;
+            int close = body.get(last).indexOf("}}");
+            if (close >= 0) {
+                body.set(last, body.get(last).substring(0, close));
+                if (body.get(last).trim().isEmpty()) {
+                    body.remove(last);
+                }
             }
-            Phrase phrase = new Parser(tokens, bodyNames).parse();
-            if (phrase instanceof Phrase.Verb) {
-                throw new JError("syntax error");
-            }
-            body.add(phrase);
         }
+        define(definition, body);
+    }
+
+    private void define(DefinitionHeader definition, List<String> bodyLines) {
+        List<Statement> body = StatementParser.parse(bodyLines, environment);
         if (body.isEmpty()) {
             throw new JError("syntax error");
         }
@@ -101,6 +123,27 @@ public final class Session {
                 || !isInteger(three, 3)
                 || !colon.isPrimitive(":")
                 || !isInteger(zero, 0)
+                || end.type() != TokenType.EOF) {
+            throw new JError("syntax error");
+        }
+        return new DefinitionHeader(
+                name.text(),
+                assignment.type() == TokenType.ASSIGN_GLOBAL);
+    }
+
+    private static DefinitionHeader parseDirectHeader(List<Token> tokens) {
+        if (tokens.size() != 4) {
+            throw new JError("syntax error");
+        }
+        Token name = tokens.get(0);
+        Token assignment = tokens.get(1);
+        Token open = tokens.get(2);
+        Token end = tokens.get(3);
+        boolean assignmentToken = assignment.type() == TokenType.ASSIGN_GLOBAL
+                || assignment.type() == TokenType.ASSIGN_LOCAL;
+        if (name.type() != TokenType.NAME
+                || !assignmentToken
+                || open.type() != TokenType.LBRACE2
                 || end.type() != TokenType.EOF) {
             throw new JError("syntax error");
         }

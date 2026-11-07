@@ -65,6 +65,30 @@ public final class Repl {
                         body.add(bodyLine);
                     }
                     session.defineExplicit(line, body);
+                } else if (session.isDirectDefinitionStart(line)) {
+                    List<String> body = new ArrayList<>();
+                    while (true) {
+                        output.print("   ");
+                        output.flush();
+
+                        String bodyLine;
+                        try {
+                            bodyLine = reader.readLine();
+                        } catch (IOException failure) {
+                            return;
+                        }
+                        if (bodyLine == null) {
+                            output.println();
+                            return;
+                        }
+                        int close = bodyLine.indexOf("}}");
+                        if (close >= 0) {
+                            body.add(bodyLine.substring(0, close));
+                            break;
+                        }
+                        body.add(bodyLine);
+                    }
+                    session.defineDirect(line, body);
                 } else {
                     session.evaluate(line).ifPresent(output::println);
                 }

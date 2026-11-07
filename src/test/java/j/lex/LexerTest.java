@@ -76,11 +76,20 @@ class LexerTest {
     }
 
     @Test
-    void reportsLimitErrorForIntegersOutsideLongRange() {
-        JError error = assertThrows(JError.class, () -> Lexer.lex("9223372036854775808"));
+    void promotesIntegersOutsideLongRangeToExtendedIntegers() {
+        List<Token> tokens = Lexer.lex("9223372036854775808");
 
-        assertEquals("limit error", error.getMessage());
-        assertEquals(1, error.column());
+        assertEquals(JType.BIGINT, tokens.get(0).literal().type());
+        assertEquals("9223372036854775808", tokens.get(0).literal().bigAt(0).toString());
+    }
+
+    @Test
+    void lexesExtendedRationalAndComplexLiterals() {
+        List<Token> tokens = Lexer.lex("123x 1r2 3j4");
+
+        assertEquals(JType.BIGINT, tokens.get(0).literal().type());
+        assertEquals(JType.RATIONAL, tokens.get(1).literal().type());
+        assertEquals(JType.COMPLEX, tokens.get(2).literal().type());
     }
 
     @Test
@@ -237,10 +246,10 @@ class LexerTest {
     }
 
     @Test
-    void unsupportedNumberSuffixesReportSpellingError() {
-        assertThrows(JError.class, () -> Lexer.lex("3x"));
-        assertThrows(JError.class, () -> Lexer.lex("2j3"));
+    void malformedNumberSuffixesReportSpellingError() {
         assertThrows(JError.class, () -> Lexer.lex("1_2"));
+        assertThrows(JError.class, () -> Lexer.lex("1.5x"));
+        assertThrows(JError.class, () -> Lexer.lex("1r"));
     }
 
     // --------------------------------------------------------------- helpers

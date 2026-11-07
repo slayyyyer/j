@@ -53,11 +53,8 @@ public final class RankVerb extends Verb {
         }
         int[] values = new int[spec.size()];
         for (int atom = 0; atom < values.length; atom++) {
-            if (spec.type() == JType.INT) {
-                long rank = spec.longAt(atom);
-                if (rank < Integer.MIN_VALUE) {
-                    throw new JError("limit error");
-                }
+            if (spec.type().isExact()) {
+                long rank = Numeric.exactLongAt(spec, atom);
                 values[atom] = rank > Integer.MAX_VALUE ? WHOLE : (int) rank;
             } else if (spec.type() == JType.FLOAT
                     && spec.doubleAt(atom) == Double.POSITIVE_INFINITY) {

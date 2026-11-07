@@ -51,6 +51,15 @@ public final class Evaluator {
                     Rank.applyMonad(evaluateVerb(monad.verb()), evaluateExpr(monad.y()));
             case Expr.Dyad dyad ->
                     Rank.applyDyad(evaluateVerb(dyad.verb()), evaluateExpr(dyad.x()), evaluateExpr(dyad.y()));
+            case Expr.Assign assign -> {
+                Value value = evaluate(assign.value());
+                Environment target = assign.global() ? environment.root() : environment;
+                target.assign(assign.name(), value);
+                if (value instanceof Value.Noun noun) {
+                    yield noun.array();
+                }
+                throw new JError("domain error");
+            }
         };
     }
 

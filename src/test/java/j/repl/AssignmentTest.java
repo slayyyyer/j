@@ -88,6 +88,75 @@ class AssignmentTest {
     }
 
     @Test
+    void explicitBodiesSupportIfElseWhileForAndReturn() {
+        session.defineExplicit(
+                "sign =: 3 : 0",
+                java.util.List.of(
+                        "if. y > 0 do.",
+                        "  y * 2",
+                        "else.",
+                        "  y - 1",
+                        "end."));
+        assertEquals("6", evaluate("sign 3"));
+        assertEquals("_3", evaluate("sign _2"));
+
+        session.defineExplicit(
+                "loop =: 3 : 0",
+                java.util.List.of(
+                        "a =. 0",
+                        "while. a < y do.",
+                        "  a =. a + 1",
+                        "end.",
+                        "a"));
+        assertEquals("4", evaluate("loop 4"));
+
+        session.defineExplicit(
+                "sumto =: 3 : 0",
+                java.util.List.of(
+                        "total =. 0",
+                        "for_i. i. y do.",
+                        "  total =. total + i",
+                        "end.",
+                        "total"));
+        assertEquals("10", evaluate("sumto 5"));
+
+        session.defineExplicit(
+                "early =: 3 : 0",
+                java.util.List.of(
+                        "if. y > 0 do.",
+                        "  return. y * 2",
+                        "end.",
+                        "0"));
+        assertEquals("6", evaluate("early 3"));
+        assertEquals("0", evaluate("early _1"));
+    }
+
+    @Test
+    void multilineDirectDefinitionsWork() {
+        session.defineDirect("f =: {{", java.util.List.of("a =. y + 1", "a * 2"));
+        assertEquals("8", evaluate("f 3"));
+
+        session.defineDirect(
+                "g =: {{",
+                java.util.List.of(
+                        "if. y > 0 do.",
+                        "  return. y * 2",
+                        "end.",
+                        "0"));
+        assertEquals("6", evaluate("g 3"));
+        assertEquals("0", evaluate("g _1"));
+    }
+
+    @Test
+    void assignmentsInsideParenthesesProduceValuesAndBindNames() {
+        assertEquals("5", evaluate("(a =. 3) + 2"));
+        assertEquals("3", evaluate("a"));
+
+        assertEquals("5", evaluate("(b =: 4) + 1"));
+        assertEquals("4", evaluate("b"));
+    }
+
+    @Test
     void reassignmentChangesThePartOfSpeech() {
         session.evaluate("f =: +");
         assertEquals("5", evaluate("2 f 3"));

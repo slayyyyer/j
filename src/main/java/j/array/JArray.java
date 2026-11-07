@@ -1,44 +1,33 @@
 package j.array;
 
+import java.math.BigInteger;
 import java.util.Arrays;
 
 /**
  * A J noun: flat, row-major storage plus a shape.
  *
- * <p>There is no separate scalar class. A rank-0 array has the empty shape and one
- * atom; a vector has shape {@code [n]}, a matrix {@code [rows, cols]}, and so on.
- * Instances are immutable: input arrays and exposed shapes are copied.
- *
- * <p>Storage matches {@link JType}: {@code long[]}, {@code double[]} or
- * {@code char[]}. J requires homogeneous arrays; arithmetic promotes an integer
- * array to floating point when needed via {@link #toFloat()}.
+ * <p>Atoms are immutable Java objects: {@link Long}, {@link BigInteger},
+ * {@link Rational}, {@link Double}, {@link Complex}, {@link Character}, or a nested
+ * {@link JArray} for a box. The shape and storage are immutable; input arrays and
+ * exposed shapes are copied.
  */
 public final class JArray {
     private final JType type;
     private final int[] shape;
-    private final Object data;
+    private final Object[] data;
     private final int size;
 
-    private JArray(JType type, int[] shape, Object data) {
+    private JArray(JType type, int[] shape, Object[] data) {
         int expectedSize = Shapes.size(shape);
-        int actualSize = storageLength(type, data);
-        if (actualSize != expectedSize) {
+        if (data.length != expectedSize) {
             throw new IllegalArgumentException(
                     "shape " + Shapes.format(shape) + " needs " + expectedSize
-                            + " atoms but got " + actualSize);
+                            + " atoms but got " + data.length);
         }
         this.type = type;
         this.shape = shape;
         this.data = data;
-        this.size = actualSize;
-    }
-
-    private static int storageLength(JType type, Object data) {
-        return switch (type) {
-            case INT -> ((long[]) data).length;
-            case FLOAT -> ((double[]) data).length;
-            case CHAR -> ((char[]) data).length;
-        };
+        this.size = data.length;
     }
 
     // ---------------------------------------------------------------- factories
@@ -50,7 +39,11 @@ public final class JArray {
 
     /** An integer array of the given shape, filled row by row. */
     public static JArray ints(int[] shape, long... values) {
-        return new JArray(JType.INT, shape.clone(), values.clone());
+        Object[] boxed = new Object[values.length];
+        for (int atom = 0; atom < values.length; atom++) {
+            boxed[atom] = values[atom];
+        }
+        return new JArray(JType.INT, shape.clone(), boxed);
     }
 
     /** A float vector with one element per value. */
@@ -60,7 +53,11 @@ public final class JArray {
 
     /** A float array of the given shape, filled row by row. */
     public static JArray floats(int[] shape, double... values) {
-        return new JArray(JType.FLOAT, shape.clone(), values.clone());
+        Object[] boxed = new Object[values.length];
+        for (int atom = 0; atom < values.length; atom++) {
+            boxed[atom] = values[atom];
+        }
+        return new JArray(JType.FLOAT, shape.clone(), boxed);
     }
 
     /** A character vector containing the characters of {@code text}. */
@@ -70,7 +67,56 @@ public final class JArray {
 
     /** A character array of the given shape, filled row by row. */
     public static JArray chars(int[] shape, char... values) {
-        return new JArray(JType.CHAR, shape.clone(), values.clone());
+        Object[] boxed = new Object[values.length];
+        for (int atom = 0; atom < values.length; atom++) {
+            boxed[atom] = values[atom];
+        }
+        return new JArray(JType.CHAR, shape.clone(), boxed);
+    }
+
+    /** An extended-integer vector. */
+    public static JArray bigints(BigInteger... values) {
+        return bigints(new int[]{values.length}, values);
+    }
+
+    /** An extended-integer array of the given shape. */
+    public static JArray bigints(int[] shape, BigInteger... values) {
+        return new JArray(JType.BIGINT, shape.clone(), values.clone());
+    }
+
+    /** A rational vector. */
+    public static JArray rationals(Rational... values) {
+        return rationals(new int[]{values.length}, values);
+    }
+
+    /** A rational array of the given shape. */
+    public static JArray rationals(int[] shape, Rational... values) {
+        return new JArray(JType.RATIONAL, shape.clone(), values.clone());
+    }
+
+    /** A complex vector. */
+    public static JArray complexes(Complex... values) {
+        return complexes(new int[]{values.length}, values);
+    }
+
+    /** A complex array of the given shape. */
+    public static JArray complexes(int[] shape, Complex... values) {
+        return new JArray(JType.COMPLEX, shape.clone(), values.clone());
+    }
+
+    /** A boxed vector. */
+    public static JArray boxes(JArray... values) {
+        return boxes(new int[]{values.length}, values);
+    }
+
+    /** A boxed array of the given shape. */
+    public static JArray boxes(int[] shape, JArray... values) {
+        return new JArray(JType.BOX, shape.clone(), values.clone());
+    }
+
+    /** A raw typed array, used by assembly after promotion. */
+    public static JArray of(JType type, int[] shape, Object[] values) {
+        return new JArray(type, shape.clone(), values.clone());
     }
 
     /** A rank-0 integer array. */
@@ -88,17 +134,39 @@ public final class JArray {
         return chars(new int[0], value);
     }
 
-    /**
-     * An empty array of the given type. At least one dimension must be zero.
-     */
+    /** A rank-0 extended-integer array. */
+    public static JArray scalar(BigInteger value) {
+        return bigints(new int[0], value);
+    }
+
+    /** A rank-0 rational array. */
+    public static JArray scalar(Rational value) {
+        return rationals(new int[0], value);
+    }
+
+    /** A rank-0 complex array. */
+    public static JArray scalar(Complex value) {
+        return complexes(new int[0], value);
+    }
+
+    /** A rank-0 box containing {@code value}. */
+    public static JArray scalar(JArray value) {
+        return boxes(new int[0], value);
+    }
+
+    /** An empty array of the given type. At least one dimension must be zero. */
     public static JArray empty(JType type, int... shape) {
         if (Shapes.size(shape) != 0) {
             throw new IllegalArgumentException("empty array shape must contain a zero: " + Shapes.format(shape));
         }
         return switch (type) {
             case INT -> ints(shape, new long[0]);
+            case BIGINT -> bigints(shape, new BigInteger[0]);
+            case RATIONAL -> rationals(shape, new Rational[0]);
             case FLOAT -> floats(shape, new double[0]);
+            case COMPLEX -> complexes(shape, new Complex[0]);
             case CHAR -> chars(shape, new char[0]);
+            case BOX -> boxes(shape, new JArray[0]);
         };
     }
 
@@ -141,25 +209,69 @@ public final class JArray {
 
     public long longAt(int index) {
         requireType(JType.INT, "longAt");
-        return ((long[]) data)[index];
+        return (Long) data[index];
     }
 
     public double doubleAt(int index) {
         requireType(JType.FLOAT, "doubleAt");
-        return ((double[]) data)[index];
+        return (Double) data[index];
     }
 
     public char charAt(int index) {
         requireType(JType.CHAR, "charAt");
-        return ((char[]) data)[index];
+        return (Character) data[index];
     }
 
-    /** Reads an atom as a double, widening integers. Characters are not numeric. */
+    /** An exact integer atom from an INT or BIGINT array. */
+    public BigInteger bigAt(int index) {
+        return switch (type) {
+            case INT -> BigInteger.valueOf((Long) data[index]);
+            case BIGINT -> (BigInteger) data[index];
+            default -> throw new IllegalStateException("bigAt requires an integer array, got " + type);
+        };
+    }
+
+    /** A rational atom from an INT, BIGINT or RATIONAL array. */
+    public Rational rationalAt(int index) {
+        return switch (type) {
+            case INT -> new Rational(BigInteger.valueOf((Long) data[index]), BigInteger.ONE);
+            case BIGINT -> new Rational((BigInteger) data[index], BigInteger.ONE);
+            case RATIONAL -> (Rational) data[index];
+            default -> throw new IllegalStateException("rationalAt requires an exact array, got " + type);
+        };
+    }
+
+    /** A complex atom from any numeric array. */
+    public Complex complexAt(int index) {
+        return switch (type) {
+            case INT -> new Complex(((Long) data[index]).doubleValue(), 0.0);
+            case BIGINT -> new Complex(((BigInteger) data[index]).doubleValue(), 0.0);
+            case RATIONAL -> new Complex(((Rational) data[index]).toDouble(), 0.0);
+            case FLOAT -> new Complex((Double) data[index], 0.0);
+            case COMPLEX -> (Complex) data[index];
+            default -> throw new IllegalStateException("complexAt requires a numeric array, got " + type);
+        };
+    }
+
+    /** A boxed atom. */
+    public JArray boxAt(int index) {
+        requireType(JType.BOX, "boxAt");
+        return (JArray) data[index];
+    }
+
+    /** The raw immutable atom, used by generic promotion and equality. */
+    public Object atomAt(int index) {
+        return data[index];
+    }
+
+    /** Reads an atom as a double, widening exact numeric types. Complex is excluded. */
     public double numericAt(int index) {
         return switch (type) {
-            case INT -> (double) ((long[]) data)[index];
-            case FLOAT -> ((double[]) data)[index];
-            case CHAR -> throw new IllegalStateException("character arrays are not numeric");
+            case INT -> ((Long) data[index]).doubleValue();
+            case BIGINT -> ((BigInteger) data[index]).doubleValue();
+            case RATIONAL -> ((Rational) data[index]).toDouble();
+            case FLOAT -> (Double) data[index];
+            default -> throw new IllegalStateException("numericAt requires a real numeric array, got " + type);
         };
     }
 
@@ -179,12 +291,7 @@ public final class JArray {
         if (offset < 0 || offset > size - count) {
             throw new IllegalArgumentException("slice out of bounds");
         }
-        Object copy = switch (type) {
-            case INT -> Arrays.copyOfRange((long[]) data, offset, offset + count);
-            case FLOAT -> Arrays.copyOfRange((double[]) data, offset, offset + count);
-            case CHAR -> Arrays.copyOfRange((char[]) data, offset, offset + count);
-        };
-        return new JArray(type, newShape.clone(), copy);
+        return new JArray(type, newShape.clone(), Arrays.copyOfRange(data, offset, offset + count));
     }
 
     // -------------------------------------------------------------- structure
@@ -223,30 +330,26 @@ public final class JArray {
 
     /**
      * Rebuilds the array with a new shape, cycling the atoms when the new shape is
-     * larger. Empty sources are filled with zeros or NUL characters.
+     * larger. Empty sources are filled with the type's default fill atom.
      */
     public JArray reshape(int[] newShape) {
         int destinationSize = Shapes.size(newShape);
         if (destinationSize == 0) {
-            return remap(newShape, new int[0]);
+            return empty(type, newShape);
         }
         if (size == 0) {
             return filled(type, newShape);
         }
-        int[] sourceIndices = new int[destinationSize];
+        Object[] result = new Object[destinationSize];
         for (int atom = 0; atom < destinationSize; atom++) {
-            sourceIndices[atom] = atom % size;
+            result[atom] = data[atom % size];
         }
-        return remap(newShape, sourceIndices);
+        return new JArray(type, newShape.clone(), result);
     }
 
     /** Flattens the array into a vector. */
     public JArray ravel() {
-        int[] sourceIndices = new int[size];
-        for (int atom = 0; atom < size; atom++) {
-            sourceIndices[atom] = atom;
-        }
-        return remap(new int[]{size}, sourceIndices);
+        return new JArray(type, new int[]{size}, data.clone());
     }
 
     /** Reverses the items along the leading axis. */
@@ -289,15 +392,24 @@ public final class JArray {
      * axis equal to the sum of the counts and the same item shape as this array.
      */
     public JArray copyItems(int[] counts) {
-        if (counts.length != itemCount()) {
+        return copyItems(counts, new int[counts.length]);
+    }
+
+    /**
+     * Replicates each item and inserts fill items after it. A complex count
+     * {@code a j. b} is represented by {@code copies[i] == a} and
+     * {@code fills[i] == b}.
+     */
+    public JArray copyItems(int[] copies, int[] fills) {
+        if (copies.length != itemCount() || fills.length != itemCount()) {
             throw new IllegalArgumentException("copy counts must match the item count");
         }
         long total = 0;
-        for (int count : counts) {
-            if (count < 0) {
+        for (int item = 0; item < copies.length; item++) {
+            if (copies[item] < 0 || fills[item] < 0) {
                 throw new IllegalArgumentException("negative copy count");
             }
-            total += count;
+            total += (long) copies[item] + fills[item];
             if (total > Integer.MAX_VALUE) {
                 throw new IllegalArgumentException("copy result is too large");
             }
@@ -313,22 +425,27 @@ public final class JArray {
 
         int itemSize = itemSize();
         int totalAtoms = Shapes.size(newShape);
-        int[] sourceIndices = new int[totalAtoms];
+        Object[] result = new Object[totalAtoms];
+        Object fill = fillObject(type);
         int at = 0;
         for (int item = 0; item < itemCount(); item++) {
-            for (int copy = 0; copy < counts[item]; copy++) {
+            for (int copy = 0; copy < copies[item]; copy++) {
                 for (int atom = 0; atom < itemSize; atom++) {
-                    sourceIndices[at++] = item * itemSize + atom;
+                    result[at++] = data[item * itemSize + atom];
+                }
+            }
+            for (int fillItem = 0; fillItem < fills[item]; fillItem++) {
+                for (int atom = 0; atom < itemSize; atom++) {
+                    result[at++] = fill;
                 }
             }
         }
-        return remap(newShape, sourceIndices);
+        return new JArray(type, newShape, result);
     }
 
     /**
      * Takes {@code count} leading items, or trailing items when negative. An
-     * overtake fills the missing items with zeros or spaces, matching J's default
-     * numeric and literal fill.
+     * overtake fills the missing items with the type's default fill atom.
      */
     public JArray takeItems(int count) {
         if (shape.length == 0) {
@@ -346,7 +463,8 @@ public final class JArray {
         int total = Shapes.size(newShape);
         int fillItems = Math.max(0, take - items);
         int start = count >= 0 ? 0 : items - Math.min(take, items);
-        int[] sourceIndices = new int[total];
+        Object[] result = new Object[total];
+        Object fill = fillObject(type);
         for (int item = 0; item < take; item++) {
             int sourceItem;
             if (count >= 0) {
@@ -355,40 +473,14 @@ public final class JArray {
                 sourceItem = item < fillItems ? -1 : start + (item - fillItems);
             }
             for (int atom = 0; atom < itemSize; atom++) {
-                sourceIndices[item * itemSize + atom] =
-                        sourceItem < 0 ? -1 : sourceItem * itemSize + atom;
+                result[item * itemSize + atom] =
+                        sourceItem < 0 ? fill : data[sourceItem * itemSize + atom];
             }
         }
-
-        return switch (type) {
-            case INT -> {
-                long[] data = new long[total];
-                for (int atom = 0; atom < total; atom++) {
-                    data[atom] = sourceIndices[atom] < 0 ? 0 : longAt(sourceIndices[atom]);
-                }
-                yield JArray.ints(newShape, data);
-            }
-            case FLOAT -> {
-                double[] data = new double[total];
-                for (int atom = 0; atom < total; atom++) {
-                    data[atom] = sourceIndices[atom] < 0 ? 0.0 : doubleAt(sourceIndices[atom]);
-                }
-                yield JArray.floats(newShape, data);
-            }
-            case CHAR -> {
-                char[] data = new char[total];
-                for (int atom = 0; atom < total; atom++) {
-                    data[atom] = sourceIndices[atom] < 0 ? ' ' : charAt(sourceIndices[atom]);
-                }
-                yield JArray.chars(newShape, data);
-            }
-        };
+        return new JArray(type, newShape, result);
     }
 
-    /**
-     * Takes along successive axes. Counts beyond the trailing axes are omitted;
-     * overtaking an axis fills with the default numeric/literal fill atom.
-     */
+    /** Takes along successive axes, filling overtaken coordinates. */
     public JArray takeAxes(int[] counts) {
         if (shape.length == 0) {
             throw new IllegalArgumentException("take needs a non-scalar argument");
@@ -398,7 +490,6 @@ public final class JArray {
         }
 
         int[] newShape = shape.clone();
-        int[] take = new int[counts.length];
         int[] fill = new int[counts.length];
         int[] shift = new int[counts.length];
         for (int axis = 0; axis < counts.length; axis++) {
@@ -406,16 +497,16 @@ public final class JArray {
             if (magnitude > Integer.MAX_VALUE) {
                 throw new IllegalArgumentException("take result is too large");
             }
-            take[axis] = (int) magnitude;
-            newShape[axis] = take[axis];
-            fill[axis] = Math.max(0, take[axis] - shape[axis]);
-            shift[axis] = Math.max(0, shape[axis] - take[axis]);
+            newShape[axis] = (int) magnitude;
+            fill[axis] = Math.max(0, newShape[axis] - shape[axis]);
+            shift[axis] = Math.max(0, shape[axis] - newShape[axis]);
         }
 
         int total = Shapes.size(newShape);
         int[] destinationStrides = Shapes.strides(newShape);
         int[] sourceStrides = Shapes.strides(shape);
-        int[] sourceIndices = new int[total];
+        Object fillAtom = fillObject(type);
+        Object[] result = new Object[total];
         for (int atom = 0; atom < total; atom++) {
             int remainder = atom;
             boolean filled = false;
@@ -444,9 +535,30 @@ public final class JArray {
                 }
                 source += sourceCoordinate * sourceStrides[axis];
             }
-            sourceIndices[atom] = filled ? -1 : source;
+            result[atom] = filled ? fillAtom : data[source];
         }
-        return remapWithFill(newShape, sourceIndices);
+        return new JArray(type, newShape, result);
+    }
+
+    /** Drops {@code count} leading items, or trailing items when negative. */
+    public JArray dropItems(int count) {
+        if (shape.length == 0) {
+            throw new IllegalArgumentException("drop needs a non-scalar argument");
+        }
+        int items = shape[0];
+        int magnitude = (int) Math.min(Math.abs((long) count), (long) items);
+        int start = count >= 0 ? magnitude : 0;
+        int end = count >= 0 ? items : items - magnitude;
+        int keep = end - start;
+        int itemSize = itemSize();
+        int[] newShape = shape.clone();
+        newShape[0] = keep;
+        Object[] result = new Object[keep * itemSize];
+        for (int atom = 0; atom < result.length; atom++) {
+            int item = start + atom / itemSize;
+            result[atom] = data[item * itemSize + atom % itemSize];
+        }
+        return new JArray(type, newShape, result);
     }
 
     /** Drops along successive axes; negative counts drop from the end. */
@@ -473,7 +585,7 @@ public final class JArray {
         int total = Shapes.size(newShape);
         int[] destinationStrides = Shapes.strides(newShape);
         int[] sourceStrides = Shapes.strides(shape);
-        int[] sourceIndices = new int[total];
+        Object[] result = new Object[total];
         for (int atom = 0; atom < total; atom++) {
             int remainder = atom;
             int source = 0;
@@ -482,30 +594,9 @@ public final class JArray {
                 remainder %= destinationStrides[axis];
                 source += (coordinate + starts[axis]) * sourceStrides[axis];
             }
-            sourceIndices[atom] = source;
+            result[atom] = data[source];
         }
-        return remap(newShape, sourceIndices);
-    }
-
-    /** Drops {@code count} leading items, or trailing items when negative. */
-    public JArray dropItems(int count) {
-        if (shape.length == 0) {
-            throw new IllegalArgumentException("drop needs a non-scalar argument");
-        }
-        int items = shape[0];
-        int magnitude = (int) Math.min(Math.abs((long) count), (long) items);
-        int start = count >= 0 ? magnitude : 0;
-        int end = count >= 0 ? items : items - magnitude;
-        int keep = end - start;
-        int itemSize = itemSize();
-        int[] newShape = shape.clone();
-        newShape[0] = keep;
-        int[] sourceIndices = new int[keep * itemSize];
-        for (int atom = 0; atom < sourceIndices.length; atom++) {
-            int item = start + atom / itemSize;
-            sourceIndices[atom] = item * itemSize + atom % itemSize;
-        }
-        return remap(newShape, sourceIndices);
+        return new JArray(type, newShape, result);
     }
 
     /** Catenates {@code other} after this array along the leading axis. */
@@ -531,97 +622,92 @@ public final class JArray {
         }
 
         JType resultType = promote(type, other.type);
-        int total = Shapes.size(newShape);
-        return switch (resultType) {
-            case INT -> {
-                long[] data = new long[total];
-                for (int atom = 0; atom < size; atom++) {
-                    data[atom] = longAt(atom);
-                }
-                for (int atom = 0; atom < other.size; atom++) {
-                    data[size + atom] = other.longAt(atom);
-                }
-                yield JArray.ints(newShape, data);
-            }
-            case FLOAT -> {
-                double[] data = new double[total];
-                for (int atom = 0; atom < size; atom++) {
-                    data[atom] = numericAt(atom);
-                }
-                for (int atom = 0; atom < other.size; atom++) {
-                    data[size + atom] = other.numericAt(atom);
-                }
-                yield JArray.floats(newShape, data);
-            }
-            case CHAR -> {
-                char[] data = new char[total];
-                for (int atom = 0; atom < size; atom++) {
-                    data[atom] = charAt(atom);
-                }
-                for (int atom = 0; atom < other.size; atom++) {
-                    data[size + atom] = other.charAt(atom);
-                }
-                yield JArray.chars(newShape, data);
-            }
-        };
+        Object[] result = new Object[Shapes.size(newShape)];
+        int at = 0;
+        for (int atom = 0; atom < size; atom++) {
+            result[at++] = convertAtom(data[atom], resultType);
+        }
+        for (int atom = 0; atom < other.size; atom++) {
+            result[at++] = convertAtom(other.data[atom], resultType);
+        }
+        return new JArray(resultType, newShape, result);
     }
 
     /** Reverses the axes of an array of rank 2 or more. */
     public JArray transpose() {
+        return transposeAxes(reversedAxes(shape.length));
+    }
+
+    /** Reorders axes using the generalized-transpose permutation. */
+    public JArray transposeAxes(int[] axes) {
+        if (axes.length != shape.length) {
+            throw new IllegalArgumentException("axis permutation has the wrong length");
+        }
         if (shape.length < 2) {
             return this;
         }
         int[] newShape = new int[shape.length];
         for (int axis = 0; axis < shape.length; axis++) {
-            newShape[axis] = shape[shape.length - 1 - axis];
+            newShape[axis] = shape[axes[axis]];
         }
         int[] sourceStrides = Shapes.strides(shape);
         int[] destinationStrides = Shapes.strides(newShape);
-        int[] coordinates = new int[shape.length];
         int[] sourceIndices = new int[size];
         for (int atom = 0; atom < size; atom++) {
             int remainder = atom;
-            for (int axis = 0; axis < shape.length; axis++) {
-                coordinates[axis] = remainder / destinationStrides[axis];
-                remainder %= destinationStrides[axis];
-            }
             int source = 0;
             for (int axis = 0; axis < shape.length; axis++) {
-                source += coordinates[axis] * sourceStrides[shape.length - 1 - axis];
+                int coordinate = remainder / destinationStrides[axis];
+                remainder %= destinationStrides[axis];
+                source += coordinate * sourceStrides[axes[axis]];
             }
             sourceIndices[atom] = source;
         }
         return remap(newShape, sourceIndices);
     }
 
-    private JArray remapWithFill(int[] newShape, int[] sourceIndices) {
-        int destinationSize = Shapes.size(newShape);
-        if (sourceIndices.length != destinationSize) {
-            throw new IllegalArgumentException("source map has the wrong length");
+    private static int[] reversedAxes(int rank) {
+        int[] axes = new int[rank];
+        for (int axis = 0; axis < rank; axis++) {
+            axes[axis] = rank - 1 - axis;
         }
-        return switch (type) {
-            case INT -> {
-                long[] data = new long[destinationSize];
-                for (int atom = 0; atom < destinationSize; atom++) {
-                    data[atom] = sourceIndices[atom] < 0 ? 0 : longAt(sourceIndices[atom]);
-                }
-                yield JArray.ints(newShape, data);
+        return axes;
+    }
+
+    /** Rotates successive axes by the given item counts. */
+    public JArray rotateAxes(long[] counts) {
+        if (shape.length == 0) {
+            throw new IllegalArgumentException("rotate needs a non-scalar argument");
+        }
+        if (counts.length > shape.length) {
+            throw new IllegalArgumentException("rotate has too many axes");
+        }
+        int[] sourceStrides = Shapes.strides(shape);
+        int[] destinationStrides = Shapes.strides(shape);
+        int[] starts = new int[shape.length];
+        for (int axis = 0; axis < counts.length; axis++) {
+            if (shape[axis] == 0) {
+                continue;
             }
-            case FLOAT -> {
-                double[] data = new double[destinationSize];
-                for (int atom = 0; atom < destinationSize; atom++) {
-                    data[atom] = sourceIndices[atom] < 0 ? 0.0 : doubleAt(sourceIndices[atom]);
-                }
-                yield JArray.floats(newShape, data);
+            long shift = Math.floorMod(counts[axis], (long) shape[axis]);
+            starts[axis] = (int) shift;
+        }
+
+        Object[] result = new Object[size];
+        for (int atom = 0; atom < size; atom++) {
+            int remainder = atom;
+            int source = 0;
+            for (int axis = 0; axis < shape.length; axis++) {
+                int coordinate = remainder / destinationStrides[axis];
+                remainder %= destinationStrides[axis];
+                int sourceCoordinate = shape[axis] == 0
+                        ? 0
+                        : Math.floorMod(coordinate + starts[axis], shape[axis]);
+                source += sourceCoordinate * sourceStrides[axis];
             }
-            case CHAR -> {
-                char[] data = new char[destinationSize];
-                for (int atom = 0; atom < destinationSize; atom++) {
-                    data[atom] = sourceIndices[atom] < 0 ? ' ' : charAt(sourceIndices[atom]);
-                }
-                yield JArray.chars(newShape, data);
-            }
-        };
+            result[atom] = data[source];
+        }
+        return new JArray(type, shape, result);
     }
 
     private JArray remap(int[] newShape, int[] sourceIndices) {
@@ -629,85 +715,160 @@ public final class JArray {
         if (sourceIndices.length != destinationSize) {
             throw new IllegalArgumentException("source map has the wrong length");
         }
-        return switch (type) {
-            case INT -> {
-                long[] data = new long[destinationSize];
-                for (int atom = 0; atom < destinationSize; atom++) {
-                    data[atom] = longAt(sourceIndices[atom]);
-                }
-                yield JArray.ints(newShape, data);
-            }
-            case FLOAT -> {
-                double[] data = new double[destinationSize];
-                for (int atom = 0; atom < destinationSize; atom++) {
-                    data[atom] = doubleAt(sourceIndices[atom]);
-                }
-                yield JArray.floats(newShape, data);
-            }
-            case CHAR -> {
-                char[] data = new char[destinationSize];
-                for (int atom = 0; atom < destinationSize; atom++) {
-                    data[atom] = charAt(sourceIndices[atom]);
-                }
-                yield JArray.chars(newShape, data);
-            }
-        };
-    }
-
-    /** The default fill atom: zero for numeric arrays, a space for characters. */
-    public static JArray fillAtom(JType type) {
-        return switch (type) {
-            case INT -> JArray.scalar(0L);
-            case FLOAT -> JArray.scalar(0.0);
-            case CHAR -> JArray.scalar(' ');
-        };
+        Object[] result = new Object[destinationSize];
+        for (int atom = 0; atom < destinationSize; atom++) {
+            result[atom] = data[sourceIndices[atom]];
+        }
+        return new JArray(type, newShape, result);
     }
 
     private static JArray filled(JType type, int[] shape) {
         int size = Shapes.size(shape);
+        Object fill = fillObject(type);
+        Object[] result = new Object[size];
+        Arrays.fill(result, fill);
+        return new JArray(type, shape, result);
+    }
+
+    /** The default fill atom: zero, space, or an empty box. */
+    public static JArray fillAtom(JType type) {
         return switch (type) {
-            case INT -> JArray.ints(shape, new long[size]);
-            case FLOAT -> JArray.floats(shape, new double[size]);
+            case INT -> JArray.scalar(0L);
+            case BIGINT -> JArray.scalar(BigInteger.ZERO);
+            case RATIONAL -> JArray.scalar(Rational.ZERO);
+            case FLOAT -> JArray.scalar(0.0);
+            case COMPLEX -> JArray.scalar(Complex.ZERO);
+            case CHAR -> JArray.scalar(' ');
+            case BOX -> JArray.scalar(JArray.ints(new long[0]));
+        };
+    }
+
+    private static Object fillObject(JType type) {
+        return switch (type) {
+            case INT -> 0L;
+            case BIGINT -> BigInteger.ZERO;
+            case RATIONAL -> Rational.ZERO;
+            case FLOAT -> 0.0;
+            case COMPLEX -> Complex.ZERO;
+            case CHAR -> ' ';
+            case BOX -> JArray.ints(new long[0]);
+        };
+    }
+
+    /** Numeric promotion for arrays; characters and boxes only combine with themselves. */
+    public static JType promote(JType left, JType right) {
+        if (left == right) {
+            return left;
+        }
+        if (!left.isNumeric() || !right.isNumeric()) {
+            throw new IllegalArgumentException("domain");
+        }
+        return left.numericRank() >= right.numericRank() ? left : right;
+    }
+
+    /** Converts one atom to another JType, widening numeric values as needed. */
+    public static Object convertAtom(Object atom, JType target) {
+        return switch (target) {
+            case INT -> {
+                if (atom instanceof Long value) {
+                    yield value;
+                }
+                if (atom instanceof BigInteger value) {
+                    yield value.longValueExact();
+                }
+                if (atom instanceof Rational value && value.isInteger()) {
+                    yield value.numerator().longValueExact();
+                }
+                throw new IllegalArgumentException("cannot convert to INT");
+            }
+            case BIGINT -> {
+                if (atom instanceof Long value) {
+                    yield BigInteger.valueOf(value);
+                }
+                if (atom instanceof BigInteger value) {
+                    yield value;
+                }
+                if (atom instanceof Rational value && value.isInteger()) {
+                    yield value.numerator();
+                }
+                throw new IllegalArgumentException("cannot convert to BIGINT");
+            }
+            case RATIONAL -> {
+                if (atom instanceof Long value) {
+                    yield new Rational(BigInteger.valueOf(value), BigInteger.ONE);
+                }
+                if (atom instanceof BigInteger value) {
+                    yield new Rational(value, BigInteger.ONE);
+                }
+                if (atom instanceof Rational value) {
+                    yield value;
+                }
+                throw new IllegalArgumentException("cannot convert to RATIONAL");
+            }
+            case FLOAT -> {
+                if (atom instanceof Long value) {
+                    yield value.doubleValue();
+                }
+                if (atom instanceof BigInteger value) {
+                    yield value.doubleValue();
+                }
+                if (atom instanceof Rational value) {
+                    yield value.toDouble();
+                }
+                if (atom instanceof Double value) {
+                    yield value;
+                }
+                throw new IllegalArgumentException("cannot convert to FLOAT");
+            }
+            case COMPLEX -> {
+                if (atom instanceof Complex value) {
+                    yield value;
+                }
+                if (atom instanceof Long value) {
+                    yield new Complex(value.doubleValue(), 0.0);
+                }
+                if (atom instanceof BigInteger value) {
+                    yield new Complex(value.doubleValue(), 0.0);
+                }
+                if (atom instanceof Rational value) {
+                    yield new Complex(value.toDouble(), 0.0);
+                }
+                if (atom instanceof Double value) {
+                    yield new Complex(value, 0.0);
+                }
+                throw new IllegalArgumentException("cannot convert to COMPLEX");
+            }
             case CHAR -> {
-                char[] data = new char[size];
-                Arrays.fill(data, ' ');
-                yield JArray.chars(shape, data);
+                if (atom instanceof Character value) {
+                    yield value;
+                }
+                throw new IllegalArgumentException("cannot convert to CHAR");
+            }
+            case BOX -> {
+                if (atom instanceof JArray value) {
+                    yield value;
+                }
+                throw new IllegalArgumentException("cannot convert to BOX");
             }
         };
     }
 
-    private static JType promote(JType left, JType right) {
-        if (left == JType.CHAR || right == JType.CHAR) {
-            if (left == JType.CHAR && right == JType.CHAR) {
-                return JType.CHAR;
-            }
-            throw new IllegalArgumentException("domain");
-        }
-        if (left == JType.FLOAT || right == JType.FLOAT) {
-            return JType.FLOAT;
-        }
-        return JType.INT;
-    }
-
-    // ------------------------------------------------------------- conversions
-
     /**
-     * Promotes an integer array to floating point. Float arrays are returned as-is;
-     * character arrays cannot be promoted.
+     * Promotes an integer or exact array to floating point. Characters, boxes and
+     * complex arrays cannot be promoted this way.
      */
     public JArray toFloat() {
         if (type == JType.FLOAT) {
             return this;
         }
-        if (type == JType.CHAR) {
-            throw new IllegalStateException("cannot promote a character array to float");
+        if (!type.isExact()) {
+            throw new IllegalStateException("cannot promote " + type + " to float");
         }
-        long[] integers = (long[]) data;
-        double[] floats = new double[integers.length];
-        for (int atom = 0; atom < integers.length; atom++) {
-            floats[atom] = integers[atom];
+        Object[] result = new Object[size];
+        for (int atom = 0; atom < size; atom++) {
+            result[atom] = numericAt(atom);
         }
-        return new JArray(JType.FLOAT, shape, floats);
+        return new JArray(JType.FLOAT, shape, result);
     }
 
     @Override

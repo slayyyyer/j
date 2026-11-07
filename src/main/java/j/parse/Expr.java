@@ -11,7 +11,8 @@ import j.array.JArray;
  * explicit in the tree: {@code 2 + 3 + 4} is a dyad whose right argument is another
  * dyad.
  */
-public sealed interface Expr permits Expr.Lit, Expr.Ref, Expr.Strand, Expr.Monad, Expr.Dyad {
+public sealed interface Expr permits Expr.Lit, Expr.Ref, Expr.Strand, Expr.Monad, Expr.Dyad,
+        Expr.Assign {
     /** A literal noun. */
     record Lit(JArray value) implements Expr {
     }
@@ -33,5 +34,9 @@ public sealed interface Expr permits Expr.Lit, Expr.Ref, Expr.Strand, Expr.Monad
 
     /** Dyadic application: {@code x verb y}. */
     record Dyad(Expr x, VerbExpr verb, Expr y) implements Expr {
+    }
+
+    /** An assignment used as a parenthesized noun expression. */
+    record Assign(String name, boolean global, Phrase value) implements Expr {
     }
 }

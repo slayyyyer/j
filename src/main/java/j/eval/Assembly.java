@@ -25,57 +25,23 @@ public final class Assembly {
             if (!Arrays.equals(cellShape, cell.shape())) {
                 throw new JError("length error");
             }
-            type = promote(type, cell.type());
+            try {
+                type = JArray.promote(type, cell.type());
+            } catch (IllegalArgumentException domain) {
+                throw new JError("domain error");
+            }
         }
 
         int[] resultShape = Shapes.concat(frameShape, cellShape);
         int total = Shapes.size(resultShape);
         int cellSize = Shapes.size(cellShape);
-
-        return switch (type) {
-            case INT -> {
-                long[] data = new long[total];
-                int at = 0;
-                for (JArray cell : cells) {
-                    for (int atom = 0; atom < cellSize; atom++) {
-                        data[at++] = cell.longAt(atom);
-                    }
-                }
-                yield JArray.ints(resultShape, data);
+        Object[] data = new Object[total];
+        int at = 0;
+        for (JArray cell : cells) {
+            for (int atom = 0; atom < cellSize; atom++) {
+                data[at++] = JArray.convertAtom(cell.atomAt(atom), type);
             }
-            case FLOAT -> {
-                double[] data = new double[total];
-                int at = 0;
-                for (JArray cell : cells) {
-                    for (int atom = 0; atom < cellSize; atom++) {
-                        data[at++] = cell.numericAt(atom);
-                    }
-                }
-                yield JArray.floats(resultShape, data);
-            }
-            case CHAR -> {
-                char[] data = new char[total];
-                int at = 0;
-                for (JArray cell : cells) {
-                    for (int atom = 0; atom < cellSize; atom++) {
-                        data[at++] = cell.charAt(atom);
-                    }
-                }
-                yield JArray.chars(resultShape, data);
-            }
-        };
-    }
-
-    private static JType promote(JType left, JType right) {
-        if (left == JType.CHAR || right == JType.CHAR) {
-            if (left == right) {
-                return JType.CHAR;
-            }
-            throw new JError("domain error");
         }
-        if (left == JType.FLOAT || right == JType.FLOAT) {
-            return JType.FLOAT;
-        }
-        return JType.INT;
+        return JArray.of(type, resultShape, data);
     }
 }

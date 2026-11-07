@@ -111,11 +111,38 @@ class StructuralTest {
     }
 
     @Test
+    void insertUsesPrimitiveIdentitiesOnEmptyArrays() {
+        assertEquals("0", JFormat.format(eval("+/ i. 0")));
+        assertEquals("1", JFormat.format(eval("*/ i. 0")));
+        assertEquals("0", JFormat.format(eval("-/ i. 0")));
+        assertEquals("1", JFormat.format(eval("%/ i. 0")));
+        assertEquals("1", JFormat.format(eval("^/ i. 0")));
+        assertEquals("1", JFormat.format(eval("=/ i. 0")));
+        assertEquals("0", JFormat.format(eval("~:/ i. 0")));
+        assertEquals("0", JFormat.format(eval("</ i. 0")));
+        assertEquals("1", JFormat.format(eval("<:/ i. 0")));
+        assertEquals("0", JFormat.format(eval(">/ i. 0")));
+        assertEquals("1", JFormat.format(eval(">:/ i. 0")));
+    }
+
+    @Test
     void copyReplicatesItems() {
         assertEquals("1 1 1 2 2 2 3 3 3", JFormat.format(eval("3 # 1 2 3")));
         assertEquals("aac", JFormat.format(eval("2 0 1 # 'abc'")));
         assertEquals("0 1 2\n0 1 2\n3 4 5\n3 4 5",
                 JFormat.format(eval("2 # i. 2 3")));
+    }
+
+    @Test
+    void complexCopyCountsInsertFills() {
+        assertEquals("0 1\n0 1\n0 0\n4 5\n0 0\n0 0",
+                JFormat.format(eval("2j1 0 1j2 # i. 3 2")));
+    }
+
+    @Test
+    void catalogCombinesBoxedItems() {
+        assertEquals("1 3\n1 4\n2 3\n2 4",
+                JFormat.format(eval("{ (<1 2),(<3 4)")));
     }
 
     @Test
@@ -137,8 +164,15 @@ class StructuralTest {
     }
 
     @Test
-    void transposeReversesAxes() {
+    void transposeReversesAxesAndSupportsADyadicAxisList() {
         assertEquals("0 3\n1 4\n2 5", JFormat.format(eval("|: i. 2 3")));
+        assertEquals("0 3\n1 4\n2 5", JFormat.format(eval("1 0 |: i. 2 3")));
+    }
+
+    @Test
+    void rotateSupportsMultipleAxes() {
+        assertEquals("5  6  7 4\n9 10 11 8\n1  2  3 0",
+                JFormat.format(eval("1 1 |. i. 3 4")));
     }
 
     @Test
@@ -151,5 +185,9 @@ class StructuralTest {
                 assertThrows(JError.class, () -> eval("1 2 , i. 2 3")).getMessage());
         assertEquals("domain error",
                 assertThrows(JError.class, () -> eval("i. 'a'")).getMessage());
+        assertEquals("domain error",
+                assertThrows(JError.class, () -> eval("_1 # 1 2 3")).getMessage());
+        assertEquals("domain error",
+                assertThrows(JError.class, () -> eval("1r2 { 10 20")).getMessage());
     }
 }

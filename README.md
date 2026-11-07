@@ -3,31 +3,32 @@
 A from-scratch interpreter for a practical subset of the
 [J programming language](https://www.jsoftware.com/), written in Java 21.
 The goal is a small, readable codebase for learning how J's array model,
-right-to-left evaluation, adverbs, conjunctions and trains fit together. It does not
-aim for full J compatibility and does not wrap an existing implementation.
+right-to-left evaluation, adverbs, conjunctions, trains and explicit
+definitions fit together. It does not wrap an existing implementation.
 
 ## Status
 
-**All nine planned milestones are implemented for the documented subset.** The
-interpreter now covers arrays and display, tokenization, parsing, evaluation,
-arithmetic and comparisons, core structural verbs, adverbs `/ \ ~`, the rank
-conjunction `"`, trains, assignment, and explicit verbs.
+The interpreter covers the documented practical subset: arrays and display,
+tokenization, parsing, evaluation, exact and complex numeric types, boxing,
+structural verbs, adverbs `/ \ ~`, the rank conjunction `"`, trains, assignment,
+explicit verbs with control words, catalog, generalized transpose and multi-axis
+rotate.
 
-This is a teaching subset, not a full J replacement. Boxing, complex numbers,
-extended integers and several advanced conjunctions are outside the current scope;
-see [Limitations](#limitations).
+This is still a teaching subset, not a full J replacement. Sparse arrays, locales,
+system facilities, the remaining conjunctions and a few exact display details are
+outside the current scope; see [Limitations](#limitations).
 
 | Milestone | Description | Status |
 |-----------|-------------|--------|
 | 1 | `JArray` + J display format + tests | done |
-| 2 | Tokenizer (`_` negatives, `NB.` comments, strings) | done |
+| 2 | Tokenizer (`_` negatives, suffixes, `NB.` comments, strings) | done |
 | 3 | Parser/evaluator for nouns and verbs, REPL | done |
 | 4 | Arithmetic and comparison with scalar extension | done |
-| 5 | Structural verbs: iota/index-of, shape, ravel, tally/copy, reverse, index, take/drop with fill | done |
-| 6 | Adverbs `/ \ ~` | done |
+| 5 | Structural verbs, copy fills, catalog, transpose, rotate | done |
+| 6 | Adverbs `/ \ ~` and insert identities | done |
 | 7 | Rank conjunction `"` | done |
 | 8 | Trains (hooks and forks) | done |
-| 9 | Assignment and user-defined verbs | done (subset) |
+| 9 | Assignment, boxing, exact types and explicit verbs | done |
 
 ## Requirements and build
 
@@ -53,7 +54,7 @@ End-of-input (Ctrl-D) exits the REPL.
 10
    +/ i. 3 4
 12 15 18 21
-   +/"1 i. 3 4
+   +/\"1 i. 3 4
 6 22 38
    (+/ % #) 1 2 3 4
 2.5
@@ -64,17 +65,25 @@ End-of-input (Ctrl-D) exits the REPL.
    inc 2
 3
    f =: 3 : 0
-   y + 10
+   if. y > 0 do.
+     y * 2
+   else.
+     y - 1
+   end.
    )
-   f 5
-15
+   f 3
+6
 ```
 
 ## What works now
 
 ### Arrays and display
 
-`JArray` models a J noun as flat storage plus a shape:
+`JArray` models a J noun as flat `Object[]` storage plus a shape. The supported
+atom types are:
+
+- `INT` (`long`), `BIGINT` (`BigInteger`), `RATIONAL`, `FLOAT` (`double`),
+  `COMPLEX`, `CHAR` and `BOX` (a nested `JArray`).
 
 ```java
 JArray m = JArray.ints(new int[]{2, 3}, 1, 2, 3, 4, 5, 6);
@@ -86,20 +95,28 @@ System.out.println(m);
 4 5 6
 ```
 
-- integer (`long`), floating point (`double`) and character (`char`) arrays;
 - rank 0 scalars, vectors, matrices and higher ranks;
 - empty arrays (a shape containing a zero);
-- integer-to-float promotion;
-- J display: `_` negatives, `_`/`__` infinities, `_.` NaN, aligned matrix columns,
-  blank lines between rank 3+ planes, and character arrays shown as text.
+- numeric promotion `INT -> BIGINT -> RATIONAL -> FLOAT -> COMPLEX`;
+- character arrays remain separate from numeric arrays;
+- boxed arrays, including nested boxes, drawn as bordered cells;
+- J display: `_` negatives, `_`/`__` infinities, `_.` NaN, aligned matrix
+  columns, blank lines between rank 3+ planes, and character arrays shown as text.
 
 ### Tokenizer
 
 `j.lex` handles integer and float literals (`_3`, `_3.5`, `1e_5`, `_`, `__`, `_.`),
 names, quoted strings with doubled-quote escapes, `NB.` comments, parentheses,
-`=:`/`=.` and `{{`/`}}` delimiters. Primitives are matched longest-first, and
-adverbs stay separate (`+/` is the verb `+` and the adverb `/`). Tokens record
-1-based columns; malformed input reports `spelling error`.
+`=:`/`=.` and `{{`/`}}` delimiters. Numeric suffixes select the wider types:
+
+- `123x` — extended integer;
+- `1r2` — rational;
+- `3j4` — complex.
+
+An integer literal outside the `long` range promotes to `BIGINT` instead of
+reporting a limit error. Primitives are matched longest-first, and adverbs stay
+separate (`+/` is the verb `+` and the adverb `/`). Tokens record 1-based
+columns; malformed input reports `spelling error`.
 
 ### Parser and evaluator
 
@@ -117,7 +134,8 @@ _5
 ```
 
 - numeric and character literals, and strands such as `1 2 3`;
-- parentheses;
+- parentheses, including assignments used as noun expressions:
+  `(a =. 3) + 2` returns `5` and binds `a`;
 - monadic and dyadic application, selected by whether a noun is on the left;
 - verb values, displayed by their spelling (`+`, `+/`, `+/"1`);
 - rank-aware application of atom verbs, including scalar extension;
@@ -129,13 +147,17 @@ _5
 
 - `+` identity/addition, `-` negation/subtraction, `*` signum/multiplication,
   `%` reciprocal/division, `^` exponential/power;
+- integer, extended, rational, float and complex arithmetic with promotion;
 - `= ~: < > <: >:` return integer 0/1 atoms;
-- numeric comparisons work across int/float; character comparisons are atom-wise;
+- numeric comparisons work across numeric types; character comparisons are
+  atom-wise; boxes can be compared for equality;
 - `<:` and `>:` also decrement and increment monadically;
 - `=` self-classifies items monadically, and `~:` produces the nub sieve;
-- `%` and monadic `^` produce floating-point results; division by zero follows
-  IEEE (`1 % 0` is `_`, `0 % 0` is `_.`);
-- integer arithmetic overflow reports `limit error`.
+- monadic `<` boxes and monadic `>` opens one level;
+- `%` and monadic `^` produce floating-point results for real arguments;
+  division by zero follows IEEE (`1 % 0` is `_`, `0 % 0` is `_.`);
+- integer arithmetic beyond `long` promotes to extended integers instead of
+  reporting a limit error.
 
 ### Structural verbs
 
@@ -146,15 +168,28 @@ Unless noted, these operate on the leading axis:
 - `$` — shape-of monadically and reshape dyadically;
 - `#` — tally monadically and copy dyadically;
 - `,` — ravel monadically and catenate dyadically;
-- `|.` — reverse monadically and rotate dyadically;
-- `{` — index items by a scalar or array of indices (negative indices work);
+- `|.` — reverse monadically and rotate dyadically; a vector left argument
+  rotates successive axes;
+- `{` — catalog monadically and index dyadically (negative indices work);
 - `{.` — head monadically and take dyadically, including overtake fill;
 - `}.` — behead monadically and drop dyadically;
-- `|:` — transpose monadically.
+- `|:` — transpose monadically and generalized transpose dyadically with an axis
+  list.
 
 `i.` matches items and returns `#x` for a missing item. `#` supports a scalar
-count and per-item count vectors. A vector left argument to `{.` or `}.` takes or
-drops along successive axes.
+count, per-item count vectors, and J complex counts `a j. b`, which copy an item
+`a` times and then insert `b` fills. Negative counts are a `domain error`, as in J.
+A vector left argument to `{.` or `}.` takes or drops along successive axes.
+
+Monadic `{` on a boxed list forms the Cartesian product of the box contents. For
+example, `{ (<1 2),(<3 4)` produces:
+
+```
+1 3
+1 4
+2 3
+2 4
+```
 
 ### Adverbs, rank and trains
 
@@ -163,20 +198,30 @@ drops along successive axes.
 - `~` — reflex monadically and passive dyadically: `+~ 1 2 3` → `2 4 6`;
 - `"` — rank, including negative ranks and one-, two- and three-number specs:
   `+/"1 i. 3 4` → `6 22 38`;
-- insert uses the `+` and `*` identities on empty arrays: `+/ i. 0` → `0`,
-  `*/ i. 0` → `1`;
 - hooks and forks, so `(+/ % #) 1 2 3 4` → `2.5`.
+
+Insert identities follow the implemented primitive verbs:
+
+- `0` for `<`, `>`, `+`, `-` and `~:`;
+- `1` for `=`, `<:`, `>:`, `*`, `%` and `^`.
+
+Thus `-/ i. 0` is `0`, `%/ i. 0` is `1`, `=/ i. 0` is `1`, and so on.
 
 ### Assignment and user-defined verbs
 
 - `name =: value` and `name =. value` assign nouns or verbs; assignment produces no
   output, and the name's noun/verb class is visible to later parsing.
 - Assignments chain right-associatively: `b =: a =: 7`.
+- At top level, `=.` and `=:` share the session table; inside an explicit verb,
+  `=.` binds a local and `=:` writes the session root.
 - `{{ ... }}` defines a verb inline from one expression, with local `x` and `y`:
   `times =: {{ x * y }}`.
-- In the REPL, `name =: 3 : 0` reads body lines until `)`. Each non-empty body line
-  is one sentence; local `x` and `y` are available, `=.` binds a local, `=:` binds
-  a session global, and the last result is returned.
+- In the REPL, `name =: {{` reads body lines until `}}`, and
+  `name =: 3 : 0` reads body lines until `)`. Both forms use the same statement
+  parser, so control words and local assignments work in either.
+- Explicit bodies support `if. condition do. ... else. ... end.`,
+  `while. condition do. ... end.`, `for_i. values do. ... end.` and
+  `return. value`.
 - `f =: +/` stores a derived verb, and `avg =: +/ % #` stores a train.
 
 ## Limitations
@@ -184,29 +229,31 @@ drops along successive axes.
 This is intentionally a subset; the following are not implemented or are
 deliberately conservative:
 
-- Boxing/heterogeneous arrays, complex numbers, rationals, extended integers,
-  sparse arrays, locales and system facilities.
-- The remaining structural forms: dyadic `|:`, monadic `{` catalog, multi-axis
-  rotate, and negative copy counts.
-- Monadic `<` (box) and `>` (open) still report `valence error`; self-classify `=`
-  and nub sieve `~:` are implemented.
-- Insert identities are implemented for `+` and `*`; inserts with other operands
-  still report `domain error` on empty arrays.
-- Explicit verbs support single-expression `{{ ... }}` and sentence-per-line
-  `3 : 0` bodies. Bodies may bind locals with `=.` and globals with `=:`, but
-  control words, multi-line direct definitions and assignments inside parentheses
-  are not implemented. At top level, `=.` and `=:` share the session table.
-- Integer overflow reports `limit error`; J would promote to extended integers.
+- Sparse arrays, locales, system facilities and file/foreign conjunctions.
+- The remaining conjunctions: inner product `+/ .*`, `@`, `&`, bond and related
+  forms.
+- `#!.f` fit (copy with a specified fill) is not implemented; complex copy counts
+  use the type's default fill.
+- Only the control words `if.`, `else.`, `while.`, `for.` and `return.` are
+  implemented. `select.`, `try.`, `throw.` and the other J control words are not.
+- Direct definitions are multi-line when started with `{{`; an inline
+  `{{ ... }}` contains one expression.
+- Insert identities exist only for the implemented primitive verbs listed above.
+- Integer power with a huge negative or non-integer exponent still uses floating
+  point; exact complex powers are approximate.
 - Float display uses five significant digits but tie rounding and exponent
   cutovers are approximate.
+- The exact generalized dyadic-transpose and multi-axis-rotate rank conventions
+  have not been exhaustively checked against every J release.
 
 ## Project layout
 
 ```
 src/main/java/j         JError (shared language error)
-src/main/java/j/array   JArray, JType, Shapes, JFormat
+src/main/java/j/array   JArray, JType, Rational, Complex, Shapes, JFormat
 src/main/java/j/lex     Lexer, Token, TokenType
-src/main/java/j/parse   Expr, VerbExpr, Phrase, Adverb, Parser, NameClassifier
+src/main/java/j/parse   Expr, VerbExpr, Phrase, Statement, StatementParser,
+                        Adverb, Parser, NameClassifier
 src/main/java/j/eval    Evaluator, Environment, Value, Rank, Assembly
 src/main/java/j/verbs   primitive, structural, derived and explicit verbs
 src/main/java/j/repl    Session, Repl
@@ -216,9 +263,10 @@ src/test/java/...       JUnit 5 tests, including AcceptanceTest
 ## Tests
 
 The suite covers the array model, display, lexer, parser, evaluator, arithmetic,
-comparisons, structural verbs, derived verbs, assignment, explicit verbs and the
-REPL. `AcceptanceTest` checks every example from the project brief, including the
-`length error` case.
+comparisons, structural verbs, boxes, exact and complex types, copy fills,
+catalog, transpose, rotate, derived verbs, insert identities, assignment,
+explicit control flow and the REPL. `AcceptanceTest` checks every example from the
+project brief.
 
 ```sh
 ./gradlew test
@@ -244,8 +292,7 @@ i. 3 4             NB. 3x4 matrix of 0..11
 
 ## Display notes
 
-J's default display uses 5 significant digits for floats. This implementation rounds
-and trims in J's notation, but the precise tie-breaking and exponent thresholds are
-**unverified** against a real interpreter. Rank 3+ layout (one blank line between
-planes) and the padding of the first matrix column are also implementation decisions
-to confirm.
+J's default display uses 5 significant digits for floats. This implementation
+rounds and trims in J's notation, but the precise tie-breaking and exponent
+thresholds are approximate. Rank 3+ layout (one blank line between planes) and
+the padding of matrix columns are implementation decisions.

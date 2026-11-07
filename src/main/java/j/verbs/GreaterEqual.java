@@ -11,15 +11,16 @@ public final class GreaterEqual extends AtomVerb {
 
     @Override
     public JArray monadCell(JArray y) {
-        Numeric.requireNumeric(y);
-        if (y.type() == JType.INT) {
-            return JArray.scalar(Numeric.increment(y.longAt(0)));
-        }
-        return JArray.scalar(y.doubleAt(0) + 1.0);
+        return Numeric.increment(y);
     }
 
     @Override
     public JArray dyadCell(JArray x, JArray y) {
         return Comparison.test(Comparison.Kind.GREATER_EQUAL, x, y);
+    }
+
+    @Override
+    public JArray identity(JType type) {
+        return Numeric.one(type);
     }
 }

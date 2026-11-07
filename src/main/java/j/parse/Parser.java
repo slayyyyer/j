@@ -75,6 +75,10 @@ public final class Parser {
     }
 
     private Phrase parsePhrase() {
+        if (peek().type() == TokenType.NAME && isAssignment(peek(1))) {
+            return parseAssignment();
+        }
+
         List<Term> terms = new ArrayList<>();
 
         while (peek().type() != TokenType.EOF && peek().type() != TokenType.RPAREN) {
@@ -206,7 +210,7 @@ public final class Parser {
         if (body instanceof Phrase.Verb) {
             throw syntax(open);
         }
-        return new VerbExpr.Explicit(List.of(body));
+        return new VerbExpr.Explicit(List.of(new Statement.Sentence(body)));
     }
 
     private void applyAdverb(List<Term> terms, Adverb adverb, Token token) {
@@ -319,7 +323,8 @@ public final class Parser {
         return switch (phrase) {
             case Phrase.Noun noun -> new Term.NounTerm(noun.expr(), column);
             case Phrase.Verb verb -> new Term.VerbTerm(verb.verb(), column);
-            case Phrase.Assign ignored -> throw new JError("syntax error", column);
+            case Phrase.Assign assign -> new Term.NounTerm(
+                    new Expr.Assign(assign.name(), assign.global(), assign.value()), column);
         };
     }
 

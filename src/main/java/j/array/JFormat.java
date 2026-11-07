@@ -1,6 +1,7 @@
 package j.array;
 
 import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.math.MathContext;
 import java.math.RoundingMode;
 import java.util.ArrayList;
@@ -9,13 +10,8 @@ import java.util.List;
 /**
  * J's display representation of a noun.
  *
- * <p>J's default display precision is five significant digits. Floats therefore print
- * as e.g. {@code 0.33333}, {@code 2.5}, {@code 1e6}, {@code 1e_5}, with negative
- * numbers spelled with {@code _}. Integers are exact. Matrices right-align each
- * column; rank 3 and higher arrays show their rank-2 planes separated by blank lines.
- *
- * <p>The fine details of J's numeric formatting (rounding mode at ties and the exact
- * exponent cutovers) are approximate until checked against a real interpreter.
+ * <p>Numeric display uses J's five significant digits for floating point. Boxed
+ * nouns are drawn as bordered cells; nested boxes are rendered recursively.
  */
 public final class JFormat {
     private static final int PRINT_PRECISION = 5;
@@ -26,6 +22,9 @@ public final class JFormat {
     }
 
     public static String format(JArray array) {
+        if (array.type() == JType.BOX) {
+            return formatBoxes(array);
+        }
         if (array.rank() == 0) {
             return atom(array, 0);
         }
@@ -125,8 +124,12 @@ public final class JFormat {
     private static String atom(JArray array, int index) {
         return switch (array.type()) {
             case INT -> formatLong(array.longAt(index));
+            case BIGINT -> formatBig(array.bigAt(index));
+            case RATIONAL -> formatRational(array.rationalAt(index));
             case FLOAT -> formatDouble(array.doubleAt(index));
+            case COMPLEX -> formatComplex(array.complexAt(index));
             case CHAR -> String.valueOf(array.charAt(index));
+            case BOX -> throw new IllegalStateException("a box cell is rendered by the box formatter");
         };
     }
 
@@ -134,6 +137,20 @@ public final class JFormat {
         return value < 0
                 ? "_" + Long.toString(value).substring(1)
                 : Long.toString(value);
+    }
+
+    private static String formatBig(BigInteger value) {
+        return value.signum() < 0
+                ? "_" + value.negate()
+                : value.toString();
+    }
+
+    private static String formatRational(Rational value) {
+        return formatBig(value.numerator()) + "r" + value.denominator();
+    }
+
+    private static String formatComplex(Complex value) {
+        return formatDouble(value.real()) + "j" + formatDouble(value.imaginary());
     }
 
     private static String formatDouble(double value) {
@@ -151,14 +168,12 @@ public final class JFormat {
         }
 
         BigDecimal rounded = new BigDecimal(value).round(ROUNDING);
-        // Floor of log10(|value|), e.g. 123.4 -> 2.
         int exponent = rounded.precision() - rounded.scale() - 1;
         boolean negative = rounded.signum() < 0;
         String digits = rounded.unscaledValue().abs().toString();
         String magnitude;
 
         if (exponent >= 6 || exponent < -4) {
-            // J's power notation: 1e6, 1.2346e6, 1e_5 (no plus sign, _ for a negative exponent).
             StringBuilder mantissa = new StringBuilder();
             mantissa.append(digits.charAt(0));
             String fraction = digits.substring(1).replaceFirst("0+$", "");
@@ -172,5 +187,85 @@ public final class JFormat {
         }
 
         return negative ? "_" + magnitude : magnitude;
+    }
+
+    // ---------------------------------------------------------------------- boxes
+
+    private static String formatBoxes(JArray array) {
+        if (array.rank() == 0) {
+            return String.join("\n", borderedCells(List.of(array.boxAt(0)), 1, 1));
+        }
+        if (array.rank() == 1) {
+            return String.join("\n", borderedCells(boxAtoms(array), 1, array.size()));
+        }
+        if (array.rank() > 2) {
+            int columns = array.shape()[array.rank() - 1];
+            int rows = array.shape()[array.rank() - 2];
+            int planeSize = rows * columns;
+            int planes = array.size() / planeSize;
+            List<String> result = new ArrayList<>();
+            for (int plane = 0; plane < planes; plane++) {
+                if (plane > 0) {
+                    result.add("");
+                }
+                JArray planeArray = array.slice(plane * planeSize, new int[]{rows, columns});
+                result.add(String.join("\n", borderedCells(boxAtoms(planeArray), rows, columns)));
+            }
+            return String.join("\n", result);
+        }
+        return String.join("\n", borderedCells(boxAtoms(array), array.shape()[0], array.shape()[1]));
+    }
+
+    private static List<JArray> boxAtoms(JArray array) {
+        List<JArray> atoms = new ArrayList<>(array.size());
+        for (int atom = 0; atom < array.size(); atom++) {
+            atoms.add(array.boxAt(atom));
+        }
+        return atoms;
+    }
+
+    private static List<String> borderedCells(List<JArray> cells, int rows, int columns) {
+        List<String> lines = new ArrayList<>();
+        int[][] widths = new int[rows][columns];
+        List<List<String>> cellLines = new ArrayList<>(cells.size());
+        for (int cell = 0; cell < cells.size(); cell++) {
+            String text = format(cells.get(cell));
+            List<String> split = List.of(text.split("\\n", -1));
+            cellLines.add(split);
+            int width = 0;
+            for (String line : split) {
+                width = Math.max(width, line.length());
+            }
+            widths[cell / columns][cell % columns] = width;
+        }
+
+        String top = border(widths[0]);
+        lines.add(top);
+        for (int row = 0; row < rows; row++) {
+            int height = 1;
+            for (int column = 0; column < columns; column++) {
+                height = Math.max(height, cellLines.get(row * columns + column).size());
+            }
+            for (int line = 0; line < height; line++) {
+                StringBuilder rendered = new StringBuilder("|");
+                for (int column = 0; column < columns; column++) {
+                    List<String> content = cellLines.get(row * columns + column);
+                    String text = line < content.size() ? content.get(line) : "";
+                    int width = widths[row][column];
+                    rendered.append(text).append(" ".repeat(width - text.length())).append('|');
+                }
+                lines.add(rendered.toString());
+            }
+            lines.add(border(widths[row]));
+        }
+        return lines;
+    }
+
+    private static String border(int[] widths) {
+        StringBuilder line = new StringBuilder("+");
+        for (int width : widths) {
+            line.append("-".repeat(width)).append('+');
+        }
+        return line.toString();
     }
 }

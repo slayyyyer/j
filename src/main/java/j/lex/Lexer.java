@@ -1,10 +1,13 @@
 package j.lex;
 
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.List;
 
 import j.JError;
+import j.array.Complex;
 import j.array.JArray;
+import j.array.Rational;
 
 /**
  * Tokenizes one J sentence.
@@ -19,9 +22,9 @@ import j.array.JArray;
  * characters as {@code spelling error}. It does not decide whether a sequence of
  * tokens forms a valid sentence; that is the parser's job.
  *
- * <p>Only primitives in the project's planned subset are recognized. J's numeric
- * suffix forms (extended integers, rationals, complex numbers) and unsupported
- * primitives are not part of the subset.
+ * <p>Numeric suffixes select exact and complex types: {@code 123x} is an extended
+ * integer, {@code 1r2} a rational, and {@code 3j4} a complex number. Numeric
+ * literals that do not fit a Java long promote to extended integers.
  */
 public final class Lexer {
     private static final String COMMENT = "NB.";
@@ -139,11 +142,90 @@ public final class Lexer {
         }
 
         int end = position;
+
+        if (!atEnd() && peek() == 'x') {
+            if (isFloat) {
+                throw new JError("spelling error", start + 1);
+            }
+            position++;
+            ensureNumberBoundary(position);
+            String text = source.substring(start, position);
+            JArray literal = JArray.scalar(
+                    parseBigInteger(text.substring(0, text.length() - 1), start));
+            return literalToken(start, position, literal);
+        }
+
+        if (!atEnd() && peek() == 'r') {
+            if (isFloat) {
+                throw new JError("spelling error", start + 1);
+            }
+            String numeratorText = source.substring(start, end);
+            position++;
+            int denominatorStart = position;
+            while (!atEnd() && isDigit(peek())) {
+                position++;
+            }
+            if (position == denominatorStart) {
+                throw new JError("spelling error", start + 1);
+            }
+            ensureNumberBoundary(position);
+            String text = source.substring(start, position);
+            BigInteger numerator = parseBigInteger(numeratorText, start);
+            BigInteger denominator = parseBigInteger(
+                    source.substring(denominatorStart, position), denominatorStart);
+            if (denominator.signum() == 0) {
+                throw new JError("spelling error", denominatorStart + 1);
+            }
+            return literalToken(start, position, JArray.scalar(new Rational(numerator, denominator)));
+        }
+
+        if (!atEnd() && peek() == 'j') {
+            String realText = source.substring(start, end);
+            position++;
+            int imaginaryStart = position;
+            if (!atEnd() && peek() == '_') {
+                position++;
+            }
+            int imaginaryDigits = position;
+            while (!atEnd() && isDigit(peek())) {
+                position++;
+            }
+            if (position == imaginaryDigits) {
+                throw new JError("spelling error", start + 1);
+            }
+            if (!atEnd() && peek() == '.') {
+                position++;
+                while (!atEnd() && isDigit(peek())) {
+                    position++;
+                }
+            }
+            if (!atEnd() && peek() == 'e') {
+                int exponent = position;
+                position++;
+                if (!atEnd() && peek() == '_') {
+                    position++;
+                }
+                int exponentDigits = position;
+                while (!atEnd() && isDigit(peek())) {
+                    position++;
+                }
+                if (position == exponentDigits) {
+                    throw new JError("spelling error", exponent + 1);
+                }
+            }
+            ensureNumberBoundary(position);
+            String text = source.substring(start, position);
+            double real = parseDouble(realText, start);
+            double imaginary = parseDouble(
+                    source.substring(imaginaryStart, position), imaginaryStart);
+            return literalToken(start, position, JArray.scalar(new Complex(real, imaginary)));
+        }
+
         ensureNumberBoundary(end);
         String text = source.substring(start, end);
         JArray literal = isFloat
                 ? JArray.scalar(parseDouble(text, start))
-                : JArray.scalar(parseLong(text, start));
+                : integerLiteral(text, start);
         return new Token(TokenType.NUMBER, text, literal, start + 1);
     }
 
@@ -157,10 +239,19 @@ public final class Lexer {
                 start + 1);
     }
 
+    private Token literalToken(int start, int end, JArray literal) {
+        position = end;
+        return new Token(
+                TokenType.NUMBER,
+                source.substring(start, end),
+                literal,
+                start + 1);
+    }
+
     /**
      * J requires a delimiter between a numeric literal and a following word.
      * Adjacent letters, digits, underscores, or dots are unsupported numeric forms
-     * (for example {@code 3x} or {@code 1_2}), not two separate literals.
+     * (for example {@code 1_2}), not two separate literals.
      */
     private void ensureNumberBoundary(int end) {
         if (end >= source.length()) {
@@ -172,11 +263,19 @@ public final class Lexer {
         }
     }
 
-    private long parseLong(String text, int start) {
+    private JArray integerLiteral(String text, int start) {
         try {
-            return Long.parseLong(text.replace('_', '-'));
+            return JArray.scalar(Long.parseLong(text.replace('_', '-')));
         } catch (NumberFormatException overflow) {
-            throw new JError("limit error", start + 1);
+            return JArray.scalar(parseBigInteger(text, start));
+        }
+    }
+
+    private BigInteger parseBigInteger(String text, int start) {
+        try {
+            return new BigInteger(text.replace('_', '-'));
+        } catch (NumberFormatException malformed) {
+            throw new JError("spelling error", start + 1);
         }
     }
 

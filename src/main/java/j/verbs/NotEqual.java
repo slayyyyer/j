@@ -1,6 +1,7 @@
 package j.verbs;
 
 import j.array.JArray;
+import j.array.JType;
 
 /** {@code ~:}: monadic nub sieve, dyadic inequality. */
 public final class NotEqual extends Verb {
@@ -31,5 +32,10 @@ public final class NotEqual extends Verb {
     @Override
     public JArray dyadCell(JArray x, JArray y) {
         return Comparison.test(Comparison.Kind.NOT_EQUAL, x, y);
+    }
+
+    @Override
+    public JArray identity(JType type) {
+        return Numeric.zero(type);
     }
 }

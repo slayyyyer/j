@@ -30,11 +30,11 @@ public final class Iota extends Verb {
 
     @Override
     public JArray monadCell(JArray y) {
-        if (y.type() != JType.INT) {
+        if (!y.type().isExact()) {
             throw new JError("domain error");
         }
         if (y.rank() == 0) {
-            return scalarIota(y.longAt(0));
+            return scalarIota(Numeric.exactLong(y));
         }
         if (y.rank() != 1) {
             throw new JError("rank error");
@@ -42,14 +42,11 @@ public final class Iota extends Verb {
 
         int[] shape = new int[y.size()];
         for (int axis = 0; axis < shape.length; axis++) {
-            long dimension = y.longAt(axis);
+            int dimension = Numeric.exactIntAt(y, axis);
             if (dimension < 0) {
                 throw new JError("domain error");
             }
-            if (dimension > Integer.MAX_VALUE) {
-                throw new JError("limit error");
-            }
-            shape[axis] = (int) dimension;
+            shape[axis] = dimension;
         }
 
         int size = Shapes.size(shape);

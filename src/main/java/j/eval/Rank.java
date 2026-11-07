@@ -110,12 +110,7 @@ public final class Rank {
     }
 
     private static JArray prototype(JType type, int[] shape) {
-        int size = Shapes.size(shape);
-        return switch (type) {
-            case INT -> JArray.ints(shape, new long[size]);
-            case FLOAT -> JArray.floats(shape, new double[size]);
-            case CHAR -> JArray.chars(shape, new char[size]);
-        };
+        return JArray.fillAtom(type).reshape(shape);
     }
 
     private static JArray emptyResult(JArray probe, int[] frameShape) {

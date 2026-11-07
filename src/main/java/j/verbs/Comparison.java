@@ -20,28 +20,35 @@ final class Comparison {
 
     static JArray test(Kind kind, JArray x, JArray y) {
         boolean result;
-        if (x.type().isNumeric() != y.type().isNumeric()) {
-            throw new JError("domain error");
-        }
-        if (x.type() == JType.CHAR) {
-            result = from(Character.compare(x.charAt(0), y.charAt(0)), kind);
-        } else if (x.type() == JType.INT && y.type() == JType.INT) {
-            result = from(Long.compare(x.longAt(0), y.longAt(0)), kind);
-        } else {
-            double left = x.numericAt(0);
-            double right = y.numericAt(0);
-            if (Double.isNaN(left) || Double.isNaN(right)) {
-                // IEEE comparisons: NaN is unequal to everything, including itself;
-                // every ordering comparison is false.
-                result = kind == Kind.NOT_EQUAL;
-            } else if (left == right) {
-                // Also covers -0.0 and 0.0, which J treats as equal.
-                result = kind == Kind.EQUAL
-                        || kind == Kind.LESS_EQUAL
-                        || kind == Kind.GREATER_EQUAL;
-            } else {
-                result = from(Double.compare(left, right), kind);
+        if (x.type() == JType.CHAR || y.type() == JType.CHAR) {
+            if (x.type() != JType.CHAR || y.type() != JType.CHAR) {
+                throw new JError("domain error");
             }
+            result = from(Character.compare(x.charAt(0), y.charAt(0)), kind);
+        } else if (x.type() == JType.BOX || y.type() == JType.BOX) {
+            if (x.type() != JType.BOX || y.type() != JType.BOX) {
+                throw new JError("domain error");
+            }
+            if (kind != Kind.EQUAL && kind != Kind.NOT_EQUAL) {
+                throw new JError("domain error");
+            }
+            result = Items.equal(x.boxAt(0), y.boxAt(0));
+            if (kind == Kind.NOT_EQUAL) {
+                result = !result;
+            }
+        } else if (x.type().isNumeric() && y.type().isNumeric()) {
+            if (kind == Kind.EQUAL || kind == Kind.NOT_EQUAL) {
+                result = Numeric.equal(x, y);
+                if (kind == Kind.NOT_EQUAL) {
+                    result = !result;
+                }
+            } else if (Numeric.isNaN(x) || Numeric.isNaN(y)) {
+                result = false;
+            } else {
+                result = from(Numeric.compare(x, y), kind);
+            }
+        } else {
+            throw new JError("domain error");
         }
         return JArray.scalar(result ? 1L : 0L);
     }

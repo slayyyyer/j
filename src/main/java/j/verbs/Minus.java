@@ -11,19 +11,16 @@ public final class Minus extends AtomVerb {
 
     @Override
     public JArray monadCell(JArray y) {
-        Numeric.requireNumeric(y);
-        if (y.type() == JType.INT) {
-            return JArray.scalar(Numeric.negate(y.longAt(0)));
-        }
-        return JArray.scalar(-y.doubleAt(0));
+        return Numeric.negate(y);
     }
 
     @Override
     public JArray dyadCell(JArray x, JArray y) {
-        Numeric.requireNumeric(x, y);
-        if (x.type() == JType.INT && y.type() == JType.INT) {
-            return JArray.scalar(Numeric.subtract(x.longAt(0), y.longAt(0)));
-        }
-        return JArray.scalar(x.numericAt(0) - y.numericAt(0));
+        return Numeric.subtract(x, y);
+    }
+
+    @Override
+    public JArray identity(JType type) {
+        return Numeric.zero(type);
     }
 }

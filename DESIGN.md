@@ -6,24 +6,33 @@ compatibility. No runtime dependencies; JUnit 5 for tests.
 
 ## 1. Data model (`j.array`)
 
-`JArray` is the only noun type. A scalar is not special: it is simply rank 0.
+`JArray` is the only noun type. A scalar is simply rank 0.
 
-- `JType type`: `INT` (`long`), `FLOAT` (`double`), `CHAR` (`char`).
-- `int[] shape`: dimensions, row-major. `[]` is a scalar, `[n]` a vector, `[r, c]` a matrix.
-- flat `Object data`: `long[]`, `double[]`, or `char[]`, length = product(shape).
-- Invariants: dimensions are non-negative, the atom count equals the shape product,
-  and the array is immutable. Factories copy caller arrays; `shape()` returns a copy.
-- Access is by atom (`longAt`, `doubleAt`, `charAt`) with a `numericAt` widening helper.
-  `toFloat()` promotes an `INT` array to `FLOAT`; `CHAR` cannot be promoted.
+- `JType type`: `INT` (`long`), `BIGINT` (`BigInteger`), `RATIONAL`
+  (`Rational`), `FLOAT` (`double`), `COMPLEX` (`Complex`), `CHAR` (`char`) or
+  `BOX` (a nested `JArray`).
+- `int[] shape`: dimensions, row-major. `[]` is a scalar, `[n]` a vector,
+  `[r, c]` a matrix.
+- flat `Object[] data`, length = product(shape). The boxed storage keeps numeric
+  promotion and heterogeneous boxes in one representation.
+- Invariants: dimensions are non-negative, the atom count equals the shape
+  product, and the array is immutable. Factories copy caller arrays; `shape()`
+  returns a copy.
 
-Boxing is deliberately deferred. Adding it means a `BOX` type whose storage is
-`JArray[]`; rank, shape and assembly code stay unchanged, while display and boxing
-verbs gain cases.
+Numeric promotion is `INT < BIGINT < RATIONAL < FLOAT < COMPLEX`. Characters and
+boxes combine only with the same type. An integer literal outside the `long`
+range becomes `BIGINT`; arithmetic that overflows a `long` also promotes rather
+than reporting a limit error.
+
+`Rational` stores a normalized numerator/denominator and supports exact
+arithmetic. `Complex` stores double real and imaginary parts. `JArray` exposes
+typed accessors (`longAt`, `bigAt`, `rationalAt`, `doubleAt`, `complexAt`,
+`charAt`, `boxAt`, `atomAt`) plus generic `convertAtom` and `promote` helpers.
 
 `Shapes` holds shape arithmetic (`size`, row-major `strides`, formatting) so that
 `JArray` stays about storage and `JFormat` about presentation. `JArray` also owns
 the leading-axis operations (`item`, `reshape`, `ravel`, reverse/rotate,
-take/drop, append and transpose) used by the structural verbs.
+take/drop, append, copy and transpose) used by the structural verbs.
 
 ### Display
 
@@ -33,14 +42,16 @@ take/drop, append and transpose) used by the structural verbs.
 - floats use J's default print precision of **5 significant digits**, trimmed of
   trailing zeros, switching to power notation at exponent >= 6 or < -4
   (`0.33333`, `1e6`, `1e_5`);
+- exact extended integers and rationals print as `123` and `1r2`;
+- complex numbers print as `3j4`;
 - a numeric matrix is rows with per-column right alignment; planes of rank 3+ arrays
   are separated by a blank line;
 - character arrays are printed as text, without quotes;
+- boxed arrays are drawn as bordered cells, recursively for nested boxes;
 - assignments do not print, but that is the REPL's job, not the formatter's.
 
 The exact edges of J's float formatting (tie rounding, exponent thresholds, and the
-leading space jconsole may add) are noted as **UNCERTAIN** in the README and will be
-compared with a real interpreter.
+leading space jconsole may add) are approximate.
 
 ## 2. Lexer (`j.lex`)
 
@@ -51,18 +62,18 @@ compared with a real interpreter.
 Each token records its exact spelling, a 1-based column, and a parsed `JArray` value
 for `NUMBER` and `STRING` tokens. The lexer throws `j.JError` with `spelling error`
 (and the offending column) for malformed literals, unterminated strings, unsupported
-numeric suffixes, or unknown characters. An integer literal outside the `long` range
-throws `limit error`. Numeric literals must be separated from adjacent words by
-whitespace or punctuation: `3x` is not three followed by a name.
+numeric suffixes, or unknown characters. Numeric literals must be separated from
+adjacent words by whitespace or punctuation: `1_2` is not a valid negative form.
 
 - Primitive words are matched longest-first from an explicit table: `=:` `=.` `{.`
   `}.` `|.` `|:` `i.` `~:` `<:` `>:` `@:` `@` `&` `.` `:` `"` `/` `\` `~` ... plus
   the one-character arithmetic and structural primitives.
 - `/` and `\` are adverbs, not part of a verb name: `+/` lexes as `+`, `/`.
-  Likewise `+/ .*` lexes as `+`, `/`, `.`, `*`, which is how J's inner product is
-  spelled.
 - Numbers: `3`, `_3`, `3.5`, `_3.5`, `1e6`, `1e_5`, `_` (infinity), `__` (negative
-  infinity), `_.` (NaN). A numeric token without `.` or an exponent is an `INT`.
+  infinity), `_.` (NaN).
+- Suffixes choose exact and complex types: `123x` is `BIGINT`, `1r2` is
+  `RATIONAL`, and `3j4` is `COMPLEX`.
+- A plain integer outside the `long` range promotes to `BIGINT`.
 - Strings: `'abc'` yields a rank-1 `CHAR` array; a doubled quote is a literal quote
   (`'don''t'`). Unterminated strings are a spelling error.
 - `NB.` outside a string starts a comment running to end of line.
@@ -80,11 +91,13 @@ Words are classified as noun, verb, adverb, conjunction, copula, or parenthesis.
 A name's class comes from the name table (as in J): names assigned a verb are verbs,
 names assigned a noun are nouns, and unbound names are treated as nouns and fail at
 evaluation with `value error`. Redefinition changes the class for later sentences.
+Inside explicit bodies, `x`, `y`, and `for.` variables are forced to nouns.
 
 ### Syntax handling
 
 1. Parentheses are parsed recursively; the inner phrase is classified as a noun
-   phrase or a verb phrase by its result.
+   phrase or a verb phrase by its result. An assignment inside parentheses becomes
+   an `Expr.Assign`, so `(a =. 3) + 2` both binds and returns `3`.
 2. Adjacent nouns form one noun phrase (a strand), e.g. `3 4` or `1 2 3`.
 3. Adverbs and the rank conjunction are applied while scanning, because they bind
    tighter than application: `+/"1`, `+/\`. Their operands are kept as AST nodes
@@ -98,23 +111,22 @@ evaluation with `value error`. Redefinition changes the class for later sentence
    - a remaining phrase containing only verbs is a train (a verb value).
    This yields right-to-left evaluation with no precedence.
 5. `name =: expr` and `name =. expr` become assignment nodes. The right side may be
-   a noun or a verb, and chained assignment is right-associative. Assignments are
-   recognized at sentence level; both copulas currently share the session-global
-   name table.
-6. `{{ ... }}` is parsed inline as an explicit verb. `name =: 3 : 0` is recognized
-   by the REPL, which collects body lines until `)`. Each line is parsed as one
-   sentence with `x` and `y` forced to nouns; the same expression parser handles
-   both forms.
+   a noun or a verb, and chained assignment is right-associative.
+6. `{{ ... }}` is parsed inline as an explicit verb. A multi-line `name =: {{`
+   definition is collected by the REPL until `}}`, and `name =: 3 : 0` is collected
+   until `)`. Both forms feed raw body lines to `StatementParser`.
 
 ### AST
 
 ```java
-sealed interface Expr permits Expr.Lit, Expr.Ref, Expr.Strand, Expr.Monad, Expr.Dyad {
+sealed interface Expr permits Expr.Lit, Expr.Ref, Expr.Strand, Expr.Monad, Expr.Dyad,
+        Expr.Assign {
     record Lit(JArray value) implements Expr {}
     record Ref(String name) implements Expr {}
     record Strand(List<Expr> parts) implements Expr {}       // juxtaposed nouns
     record Monad(VerbExpr verb, Expr y) implements Expr {}
     record Dyad(Expr x, VerbExpr verb, Expr y) implements Expr {}
+    record Assign(String name, boolean global, Phrase value) implements Expr {}
 }
 
 sealed interface VerbExpr permits VerbExpr.Lit, VerbExpr.Ref, VerbExpr.WithAdverb,
@@ -124,7 +136,7 @@ sealed interface VerbExpr permits VerbExpr.Lit, VerbExpr.Ref, VerbExpr.WithAdver
     record WithAdverb(VerbExpr operand, Adverb adverb) implements VerbExpr {}
     record WithRank(VerbExpr operand, Expr ranks) implements VerbExpr {}
     record Train(List<VerbExpr> verbs) implements VerbExpr {}
-    record Explicit(List<Phrase> body) implements VerbExpr {}
+    record Explicit(List<Statement> body) implements VerbExpr {}
 }
 
 sealed interface Phrase permits Phrase.Noun, Phrase.Verb, Phrase.Assign {
@@ -132,12 +144,22 @@ sealed interface Phrase permits Phrase.Noun, Phrase.Verb, Phrase.Assign {
     record Verb(VerbExpr verb) implements Phrase {}
     record Assign(String name, boolean global, Phrase value) implements Phrase {}
 }
+
+sealed interface Statement permits Statement.Sentence, Statement.If, Statement.While,
+        Statement.For, Statement.Return {
+    record Sentence(Phrase phrase) implements Statement {}
+    record If(Expr condition, List<Statement> thenBody, List<Statement> elseBody)
+            implements Statement {}
+    record While(Expr condition, List<Statement> body) implements Statement {}
+    record For(String variable, Expr values, List<Statement> body) implements Statement {}
+    record Return(Expr value) implements Statement {}
+}
 ```
 
-`Expr` denotes phrases that produce a noun (applications always produce nouns);
-`VerbExpr` denotes a phrase that produces a verb; `Phrase` wraps either result at
-the top level or an assignment. Derived verbs, trains, assignments and explicit
-definitions are represented directly rather than evaluated during parsing.
+`Expr` denotes phrases that produce a noun; `VerbExpr` denotes a phrase that
+produces a verb; `Phrase` wraps either result at the top level or an assignment.
+Derived verbs, trains, assignments and explicit definitions are represented
+directly rather than evaluated during parsing.
 
 Examples:
 
@@ -150,6 +172,22 @@ Examples:
 | `+/"1 i. 3 4`        | `Monad(WithRank(+/ , 1), Monad(i., 3 4))`             |
 | `avg =: +/ % #`      | `Assign(avg, Verb(Train(+/ , %, #)))`                 |
 
+### Statements and control flow
+
+`StatementParser` splits an explicit body into statements. Control words are
+recognized at the beginning of a trimmed line:
+
+- `if. condition do. ... [else. ...] end.`
+- `while. condition do. ... end.`
+- `for_i. values do. ... end.` (the variable is `i`, or the name after `for_`)
+- `return. value` and bare `return.`
+
+Other lines are parsed as ordinary sentences. A `for.` variable and its
+`<variable>_index` companion are treated as nouns while the body is parsed.
+Nested control structures recurse through the same block parser. Blank lines and
+`NB.` comments are skipped. The statement parser is deliberately smaller than J's
+full control-word set.
+
 ### Trains
 
 A train is a verb phrase containing only verbs. 2 verbs form a hook, 3 a fork:
@@ -161,12 +199,8 @@ A train is a verb phrase containing only verbs. 2 verbs form a hook, 3 a fork:
 
 Longer trains are grouped from the right: an odd-length train is a fork of its
 first two verbs and the remaining train, and an even-length train is a hook of its
-first verb and the remaining train. This is J's right-grouping rule, e.g. a
-four-verb train is `u (v w x)` and a five-verb train is `u v (w x y)`.
-
-Note that without parentheses, `- - 5` is two monads (`5`), not a hook: a train is a
-verb phrase with no noun to apply to, whereas `- - 5` has an argument. This follows
-from reducing applications from the right before treating leftover verbs as a train.
+first verb and the remaining train. Without parentheses, `- - 5` is two monads
+(`5`), not a hook, because the noun argument is present.
 
 ## 4. Verbs (`j.verbs`)
 
@@ -196,31 +230,36 @@ conjunction and trains are therefore just verb constructors. `Bond`, `Compose`,
 inner product and the remaining conjunctions are outside the subset.
 
 A verb with no definition for a valence throws `valence error`. Character arguments
-to arithmetic throw `domain error`. Integer overflow in the current 64-bit atom
-verbs throws `limit error` rather than promoting to J's extended integers.
+to numeric arithmetic throw `domain error`. Numeric arithmetic promotes to exact
+or complex types as needed.
 
 Arithmetic and comparison verbs are rank `0 0 0` and share the `AtomVerb` base.
-`+ - * % ^` promote to float when needed, `%` is always floating point, and
-integer overflow reports `limit error`. Comparisons return integer 0/1 atoms and
-accept numeric atoms (int/float mixed) or character atoms, but not a
-character/numeric mix. Monadic `<:` and `>:` are decrement and increment. `=`
-self-classify returns the nub-by-items boolean table, and `~:` returns the nub
-sieve. Monadic `<` box and `>` open still need the deferred box type.
+`+ - * % ^` handle numeric promotion through `Numeric`; `%` returns floating point
+for real arguments; comparisons return integer 0/1 atoms and accept numeric atoms
+or characters, but not a character/numeric mix. Monadic `<:` and `>:` are decrement
+and increment. Monadic `<` boxes; monadic `>` opens one level. `=` self-classify
+returns the nub-by-items boolean table, and `~:` returns the nub sieve.
 
 Structural verbs use explicit ranks. `i.` is monadic rank 1 and dyadic rank
 `_ _`; its dyadic case matches cells whose rank is the rank of an item of `x`.
 `#` is `_ 1 _` (tally/copy), take and drop have a rank-1 left operand and fill or
-slice successive axes, and `$`/`|.`/`{` keep their own rank rules. Derived verbs
-use whole-argument ranks and delegate to the normal rank wrapper, which lets a
-rank conjunction cut cells before the derived verb runs. Insert asks its operand
-for a type-specific identity when the argument has no items; `+` and `*` provide
-`0` and `1` shaped like an item, while other operands retain `domain error`. A
-verb value is displayed by its `repr` (e.g. entering `+` prints `+`).
+slice successive axes, and `$`/`|.`/`{` keep their own rank rules. Monadic `{`
+catalog has rank 1 and requires a boxed list. `|:` uses generalized axis
+permutation; dyadic `|.` with a vector left argument rotates successive axes.
+`#` accepts exact integer counts and complex `a j. b` counts: `a` copies the item
+and `b` appends default fills. Negative counts are a domain error, matching J.
+
+Insert asks its operand for a type-specific identity when the argument has no items.
+The implemented identities are `0` for `< > + - ~:` and `1` for
+`= <: >: * % ^`; other operands retain `domain error`. A verb value is displayed
+by its `repr` (e.g. entering `+` prints `+`).
 
 ## 5. Evaluator (`j.eval`)
 
 - `Evaluator` resolves `Ref` and `VerbRef` through an `Environment`, evaluates
   `Monad`/`Dyad` by calling the rank wrapper, and stores assignment results.
+  `Expr.Assign` evaluates its right side, stores it in the local or root
+  environment, and yields the assigned noun value.
 - A sentence's value is a noun or a verb; the REPL prints nouns with `JFormat` and
   verbs with `repr()`. Assignment sentences are marked "no display".
 - Rank application for a monad:
@@ -236,11 +275,10 @@ verb value is displayed by its `repr` (e.g. entering `+` prints `+`).
 - Derived verbs are built during evaluation: `WithAdverb` becomes Insert, Prefix or
   Reflex; `WithRank` becomes RankVerb; `Train` becomes TrainVerb; `Explicit`
   becomes ExplicitVerb.
-- Strands stack their evaluated parts: all parts need the same shape, so
-  `(1 2) (3 4)` becomes a 2x2 matrix. Int/float parts promote; char/numeric mixes
-  are a `domain error` until boxing exists.
-- An empty frame is handled with a prototype cell (zeros or NUL characters) so the
-  cell verb can determine the result shape without real data.
+- Strands stack their evaluated parts: all parts need compatible shapes, and
+  numeric parts promote; char/box mixes are a `domain error`.
+- An empty frame is handled with a prototype cell (type fill) so the cell verb can
+  determine the result shape without real data.
 - Errors are `j.JError` with J's wording: `domain error`, `length error`,
   `rank error`, `index error`, `value error`, `valence error`, `syntax error`,
   `spelling error`, `limit error`. Lexical and syntax errors carry a 1-based column.
@@ -251,34 +289,42 @@ is how `ExplicitVerb` binds local `x` and `y` while falling back to session glob
 Assignment stores either a noun or a verb, and the parser's `isVerb` classification
 changes with it. `Phrase.Assign` evaluation is suppressed by `Session` so
 definitions do not print. In an explicit body, `=.` assigns in the child scope and
-`=:` writes the root scope; at top level both share the session table. Explicit
-bodies are evaluated sentence by sentence, and the last noun result is returned.
+`=:` writes the root scope; at top level both share the session table.
 
-## 6. Primitive ranks (to be confirmed against J)
+`ExplicitVerb` executes statements with a local environment:
+`Statement.Sentence` evaluates normally; `If` evaluates its condition as a scalar
+truth value and executes one branch; `While` repeats until the condition is false;
+`For` binds the variable to each item and `<variable>_index` to its index; and
+`Return` unwinds to the explicit verb with its noun result. The last statement's
+noun is returned when no `return.` executes.
+
+## 6. Primitive ranks
 
 Base arithmetic and comparisons are atom-wise (`0 0 0`). Structural ranks are
 `i.` = `1 _ _`, `#` = `_ 1 _`, take/drop = `_ 1 _`, `$` = `_ 1 _`, `|.` = `_ 0 _`,
-and `{` = `_ _ _` for the implemented meanings. `i.` and take/drop receive the
-whole right argument and do their own cell/axis handling. `"` overrides any of
-these ranks. Exact J ranks for the still-deferred structural meanings remain to
-be checked.
+`{` = `1 _ _` for catalog and `_ _ _` for indexing, and `|:` uses whole
+arguments. `i.` and take/drop receive the whole right argument and do their own
+cell/axis handling. `"` overrides any of these ranks. Exact J ranks for the
+still-deferred structural meanings remain to be checked.
 
 ## 7. REPL (`j.repl`)
 
 `Session` owns the environment and turns a line into display text. `Repl` supplies
 J's three-space prompt and prints `|error message` for a `JError`, then continues;
 end-of-input exits. Empty and comment-only lines produce no output. Assignment
-sentences are evaluated but not printed. `Session.isExplicitDefinitionStart`
-recognizes `name =: 3 : 0`/`=.` and `Repl` collects body lines through `)`;
-`Session.defineExplicit` parses each line as a sentence and stores the resulting
-`ExplicitVerb`, including local/global assignment sentences. Inline `{{ ... }}`
-definitions are single sentences and need no special REPL handling.
+sentences are evaluated but not printed.
+
+`Session.isExplicitDefinitionStart` recognizes `name =: 3 : 0`/`=.` and `Repl`
+collects body lines through `)`. `Session.isDirectDefinitionStart` recognizes
+`name =: {{`/`=.` and collects until `}}`. Both definitions are parsed by
+`StatementParser` and stored as `ExplicitVerb`s. Inline `{{ ... }}` definitions
+remain single sentences and need no special REPL handling.
 
 ## 8. Testing and milestones
 
 JUnit 5 tests live beside each package; display is tested as exact strings. An
 acceptance suite mirrors the examples in the project brief. Work proceeds milestone
-by milestone, running the suite and committing after each:
+by milestone, running the suite and committing after each.
 
 All nine milestones are implemented for the documented subset. `AcceptanceTest`
 covers the brief's examples; the remaining limitations are listed in the README.
@@ -287,31 +333,26 @@ covers the brief's examples; the remaining limitations are listed in the README.
 2. tokenizer + tests;
 3. parser/evaluator for nouns and simple verbs + REPL;
 4. arithmetic/comparison with scalar extension;
-5. structural verbs (`i.`, `$`, `,`, `#`, `|.`, `{`, `{.`, `}.`);
-6. adverbs `/ \ ~`;
+5. structural verbs (`i.`, `$`, `,`, `#`, `|.`, `{`, `{.`, `}.`, `|:`);
+6. adverbs `/ \ ~` and insert identities;
 7. rank conjunction `"`;
 8. trains;
-9. assignment and user-defined verbs.
+9. assignment, boxes, exact/complex types and explicit definitions.
 
-## 9. Known uncertainties (to check against J)
+## 9. Known uncertainties
 
 - exact float display rounding and exponent cutovers;
 - rank >= 3 display grouping and blank lines;
 - whether J's matrix display pads the first column;
-- multi-axis rotate and generalized dyadic transpose;
-- negative copy counts (currently `domain error`);
-- insert identities for operands other than `+` and `*`;
-- exact ranks for deferred structural meanings and monadic `<`/`>`;
+- exhaustive generalized dyadic-transpose and multi-axis-rotate conventions;
+- insert identities for primitives not implemented here;
+- exact ranks for deferred structural meanings;
 - signum's result type for float arguments and its NaN handling;
 - NaN comparison (currently IEEE: all false except `~:`) and mixed
   character/numeric comparison (currently `domain error`);
-- integer power overflow and complex results (currently `limit error` or NaN);
+- integer power overflow and complex results;
 - stacking behavior for strands of non-scalar nouns;
 - whether monadic `+` accepts character arrays (currently a `domain error`);
-- control words, multi-line direct definitions and sentence grouping in explicit
-  bodies;
-- assignments inside parentheses (currently `syntax error`);
+- control words outside `if.`/`while.`/`for.`/`return.`;
 - top-level `=.` sharing the session table with `=:`;
 - inner product `+/ .*`, `@`, `&` and related conjunctions (not implemented).
-
-These are called out where implemented rather than silently guessed.

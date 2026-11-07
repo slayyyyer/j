@@ -1,11 +1,9 @@
 package j.verbs;
 
 import j.array.JArray;
+import j.array.JType;
 
-/**
- * {@code %}: monadic reciprocal, dyadic division. Both are floating point, as in J;
- * division by zero therefore produces infinities or NaN rather than an error.
- */
+/** {@code %}: monadic reciprocal, dyadic division. */
 public final class Divide extends AtomVerb {
     public Divide() {
         super("%");
@@ -13,13 +11,16 @@ public final class Divide extends AtomVerb {
 
     @Override
     public JArray monadCell(JArray y) {
-        Numeric.requireNumeric(y);
-        return JArray.scalar(1.0 / y.numericAt(0));
+        return Numeric.reciprocal(y);
     }
 
     @Override
     public JArray dyadCell(JArray x, JArray y) {
-        Numeric.requireNumeric(x, y);
-        return JArray.scalar(x.numericAt(0) / y.numericAt(0));
+        return Numeric.divide(x, y);
+    }
+
+    @Override
+    public JArray identity(JType type) {
+        return Numeric.one(type);
     }
 }
