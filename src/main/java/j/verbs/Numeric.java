@@ -39,4 +39,20 @@ final class Numeric {
             throw new JError("limit error");
         }
     }
+
+    static long multiply(long x, long y) {
+        try {
+            return Math.multiplyExact(x, y);
+        } catch (ArithmeticException overflow) {
+            throw new JError("limit error");
+        }
+    }
+
+    static long increment(long value) {
+        return add(value, 1);
+    }
+
+    static long decrement(long value) {
+        return subtract(value, 1);
+    }
 }

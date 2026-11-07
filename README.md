@@ -8,16 +8,16 @@ compatibility and does not wrap an existing implementation.
 
 ## Status
 
-**Milestones 1–3 of 9 complete.** The array model and display, the tokenizer, and a
-parser/evaluator/REPL are working. Only `+` and `-` are registered so far; full
-arithmetic, structural verbs, adverbs, rank, trains and assignment are still to come.
+**Milestones 1–4 of 9 complete.** The array model and display, the tokenizer, a
+parser/evaluator/REPL, and arithmetic/comparison verbs are working. Structural
+verbs, adverbs, rank, trains and assignment are still to come.
 
 | Milestone | Description | Status |
 |-----------|-------------|--------|
 | 1 | `JArray` + J display format + tests | done |
 | 2 | Tokenizer (`_` negatives, `NB.` comments, strings) | done |
 | 3 | Parser/evaluator for nouns and verbs, REPL | done |
-| 4 | Arithmetic and comparison with scalar extension | planned |
+| 4 | Arithmetic and comparison with scalar extension | done |
 | 5 | Structural verbs (iota, shape, ravel, tally, reverse/rotate, index, take/drop) | planned |
 | 6 | Adverbs `/ \ ~` | planned |
 | 7 | Rank conjunction `"` | planned |
@@ -82,6 +82,14 @@ J is evaluated strictly right to left with no operator precedence:
 _5
    10 - 3 - 2
 9
+   2 * 3 + 4
+14
+   2 ^ 10
+1024
+   1 2 3 = 2
+0 1 0
+   1 2 3 < 3
+1 1 0
    1 +
 |syntax error
    2 + 3
@@ -93,19 +101,29 @@ Supported in the interpreter:
 - numeric and character literals, and strands such as `1 2 3`;
 - parentheses;
 - monadic and dyadic application, selected by whether a noun is on the left;
-- `+` (conjugate/identity; addition) and `-` (negation; subtraction), applied
-  atom-wise with scalar extension;
+- `+` (conjugate/identity; addition), `-` (negation; subtraction), `*` (signum;
+  multiplication), `%` (reciprocal; division), and `^` (exponential; power),
+  applied atom-wise with scalar extension;
+- comparisons `= ~: < > <: >:`, returning 0/1 integers; `<:` and `>:` also
+  decrement and increment monadically;
+- character comparisons and mixed integer/float numeric comparisons;
 - arrays of any rank (rank-0 verbs map over their frames);
 - verb values, displayed by their spelling (`+`);
 - J-style errors without crashing the REPL: `syntax error`, `value error`,
   `domain error`, `length error`, `rank error`, `valence error`, `limit error`.
 
+`%` and monadic `^` produce floating-point results; division by zero follows IEEE
+conventions (`1 % 0` is `_`, `0 % 0` is `_.`). Integer `*` and integer `^` overflow
+report `limit error` rather than promoting.
+
 Strands of equal-shaped nouns are stacked into a higher-rank array, so
 `(1 2) (3 4)` gives a 2x2 matrix. Mixed character/numeric strands are a
 `domain error` until boxing is implemented.
 
-Not yet implemented: the remaining arithmetic and comparison verbs, structural
-verbs, adverbs, the rank conjunction, trains, assignment, and explicit verbs.
+Not yet implemented: structural verbs, adverbs, the rank conjunction, trains,
+assignment, explicit verbs, and the non-arithmetic monadic meanings of comparisons
+(`<` box, `>` open, `=` self-classify, `~:` nub sieve), which currently raise
+`valence error`.
 
 ## Project layout
 
@@ -115,7 +133,7 @@ src/main/java/j/array   JArray, JType, Shapes, JFormat
 src/main/java/j/lex     Lexer, Token, TokenType
 src/main/java/j/parse   Expr, VerbExpr, Phrase, Parser, NameClassifier
 src/main/java/j/eval    Evaluator, Environment, Value, Rank, Assembly
-src/main/java/j/verbs   Verb, Plus, Minus, Primitives
+src/main/java/j/verbs   Verb/AtomVerb, arithmetic and comparison verbs, Primitives
 src/main/java/j/repl    Session, Repl
 src/test/java/...       JUnit 5 tests
 ```
@@ -130,10 +148,16 @@ to confirm.
 
 ## Subset limitations
 
-- Only `+` and `-` are registered as verbs; other primitive spellings currently
-  produce `syntax error` until their milestone.
+- Structural primitives such as `i.` `$` `,` `#` and `{` are not registered yet;
+  they produce `syntax error` until their milestone.
+- Monadic `<`/`>` (box/open), monadic `=` (self-classify), and monadic `~:` (nub
+  sieve) are deferred and currently produce `valence error`.
 - Integer arithmetic overflow reports `limit error`; J would promote to extended
-  integers.
+  integers. Complex results are unsupported: `_2 ^ 0.5` yields NaN instead of a
+  complex number.
+- Comparisons between character and numeric atoms are a `domain error`; NaN
+  comparisons follow IEEE rules (all false except `~:`). J's exact behavior for
+  these edge cases is unverified.
 - Boxing is not implemented, so mixed character/numeric arrays are rejected.
 - Stacking non-scalar nouns in a strand follows the natural "new leading axis"
   rule but is **unverified** against J.
@@ -151,9 +175,8 @@ Core:
 
 Primitives (monadic / dyadic where applicable):
 
-- [x] `+ -` (initial arithmetic verbs)
-- [ ] `* % ^`
-- [ ] `= < > <: >: ~:`
+- [x] `+ - * % ^` arithmetic
+- [x] `= < > <: >: ~:` comparisons (dyadic; `<:`/`>:` monadic decrement/increment)
 - [ ] `i.` `$` `,` `#` `|.` `{` `{.` `}.`
 - [ ] `|:` transpose, inner product, boxing, `@`/`@:`, `&`
 - [ ] Adverbs `/ \ ~`

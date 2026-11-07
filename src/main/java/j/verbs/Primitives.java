@@ -5,13 +5,22 @@ import java.util.Map;
 /**
  * The primitive verbs implemented so far.
  *
- * <p>Milestone 3 registers only {@code +} and {@code -}; the remaining arithmetic,
- * comparison and structural verbs arrive with later milestones.
+ * <p>Milestone 4 registers arithmetic ({@code + - * % ^}) and comparisons
+ * ({@code = < > <: >: ~:}). Structural and derived verbs arrive later.
  */
 public final class Primitives {
-    private static final Map<String, Verb> VERBS = Map.of(
-            "+", new Plus(),
-            "-", new Minus());
+    private static final Map<String, Verb> VERBS = Map.ofEntries(
+            Map.entry("+", new Plus()),
+            Map.entry("-", new Minus()),
+            Map.entry("*", new Times()),
+            Map.entry("%", new Divide()),
+            Map.entry("^", new Power()),
+            Map.entry("=", new Equal()),
+            Map.entry("<", new Less()),
+            Map.entry(">", new Greater()),
+            Map.entry("<:", new LessEqual()),
+            Map.entry(">:", new GreaterEqual()),
+            Map.entry("~:", new NotEqual()));
 
     private Primitives() {
     }

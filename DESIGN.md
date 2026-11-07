@@ -182,9 +182,15 @@ A verb with no definition for a valence throws `valence error`. Character argume
 to arithmetic throw `domain error`. Integer overflow in the current 64-bit atom
 verbs throws `limit error` rather than promoting to J's extended integers.
 
-Milestone 3 registers only `+` and `-`, both at ranks `0 0 0`. Other primitive
-spellings currently produce a syntax error until their milestone. Note that a verb
-value is displayed by its `repr` (e.g. entering `+` prints `+`).
+Milestones 3–4 register `+ - * % ^` and `= < > <: >: ~:`. All are rank `0 0 0`
+and share the `AtomVerb` base. Arithmetic promotes to float when needed, `%` is
+always floating point, and integer overflow reports `limit error`.
+
+Comparisons return integer 0/1 atoms and accept numeric atoms (int/float mixed) or
+character atoms, but not a character/numeric mix. Monadic `<:` and `>:` are
+decrement and increment. The other monadic comparison meanings are deferred: `<`
+box, `>` open, `=` self-classify, and `~:` nub sieve raise `valence error` for now.
+A verb value is displayed by its `repr` (e.g. entering `+` prints `+`).
 
 ## 5. Evaluator (`j.eval`)
 
@@ -233,7 +239,7 @@ JUnit 5 tests live beside each package; display is tested as exact strings. An
 acceptance suite mirrors the examples in the project brief. Work proceeds milestone
 by milestone, running the suite and committing after each:
 
-Milestones 1–3 are implemented; the rest are planned.
+Milestones 1–4 are implemented; the rest are planned.
 
 1. `JArray` + display + tests;
 2. tokenizer + tests;
@@ -252,6 +258,10 @@ Milestones 1–3 are implemented; the rest are planned.
 - whether J's matrix display pads the first column;
 - 4+-verb train grouping;
 - ranks and monadic meanings of comparison/structural primitives;
+- signum's result type for float arguments and its NaN handling;
+- NaN comparison (currently IEEE: all false except `~:`) and mixed
+  character/numeric comparison (currently `domain error`);
+- integer power overflow and complex results (currently `limit error` or NaN);
 - stacking behavior for strands of non-scalar nouns;
 - whether monadic `+` accepts character arrays (currently a `domain error`);
 - parsing of `+/ .*` and `@`/`@:` rank consequences.

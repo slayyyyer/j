@@ -109,7 +109,7 @@ class ParserTest {
 
     @Test
     void rejectsUnimplementedPrimitivesAndAssignment() {
-        assertThrows(JError.class, () -> parse("2 * 3"));
+        assertThrows(JError.class, () -> parse("2 $ 3"));
         assertThrows(JError.class, () -> parse("a =: 1"));
     }
 }

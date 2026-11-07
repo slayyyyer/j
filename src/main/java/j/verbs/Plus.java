@@ -4,24 +4,9 @@ import j.array.JArray;
 import j.array.JType;
 
 /** {@code +}: monadic conjugate (identity on reals), dyadic addition. */
-public final class Plus extends Verb {
+public final class Plus extends AtomVerb {
     public Plus() {
         super("+");
-    }
-
-    @Override
-    public int monadRank() {
-        return 0;
-    }
-
-    @Override
-    public int leftRank() {
-        return 0;
-    }
-
-    @Override
-    public int rightRank() {
-        return 0;
     }
 
     @Override
