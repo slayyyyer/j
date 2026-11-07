@@ -138,6 +138,15 @@ class JArrayTest {
     }
 
     @Test
+    void slicesContiguousCells() {
+        JArray matrix = JArray.ints(new int[]{2, 3}, 1, 2, 3, 4, 5, 6);
+
+        assertEquals("4 5 6", JFormat.format(matrix.slice(3, new int[]{3})));
+        assertEquals("1", JFormat.format(matrix.slice(0, new int[0])));
+        assertThrows(IllegalArgumentException.class, () -> matrix.slice(4, new int[]{3}));
+    }
+
+    @Test
     void typedAccessorsRejectTheWrongType() {
         JArray floats = JArray.floats(1.5);
 

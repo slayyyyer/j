@@ -103,26 +103,28 @@ evaluation with `value error`. Redefinition changes the class for later sentence
 ### AST
 
 ```java
-sealed interface Expr permits Lit, Ref, Strand, Monad, Dyad, Assign {
+sealed interface Expr permits Expr.Lit, Expr.Ref, Expr.Strand, Expr.Monad, Expr.Dyad {
     record Lit(JArray value) implements Expr {}
     record Ref(String name) implements Expr {}
     record Strand(List<Expr> parts) implements Expr {}       // juxtaposed nouns
     record Monad(VerbExpr verb, Expr y) implements Expr {}
     record Dyad(Expr x, VerbExpr verb, Expr y) implements Expr {}
-    record Assign(String name, boolean global, Expr rhs) implements Expr {}
 }
 
-sealed interface VerbExpr permits VerbLit, VerbRef, WithAdverb, WithConjunction, Train {
-    record VerbLit(Verb verb) implements VerbExpr {}
-    record VerbRef(String name) implements VerbExpr {}
-    record WithAdverb(VerbExpr operand, Adverb adverb) implements VerbExpr {}
-    record WithConjunction(VerbExpr left, Conjunction conj, Expr right) implements VerbExpr {}
-    record Train(List<VerbExpr> verbs) implements VerbExpr {}
+sealed interface VerbExpr permits VerbExpr.Lit, VerbExpr.Ref {
+    record Lit(Verb verb) implements VerbExpr {}
+    record Ref(String name) implements VerbExpr {}
+}
+
+sealed interface Phrase permits Phrase.Noun, Phrase.Verb {
+    record Noun(Expr expr) implements Phrase {}
+    record Verb(VerbExpr verb) implements Phrase {}
 }
 ```
 
-`Expr` denotes phrases that produce a noun (applications always produce nouns).
-`VerbExpr` denotes phrases that produce a verb. Assignment can store either.
+`Expr` denotes phrases that produce a noun (applications always produce nouns);
+`VerbExpr` denotes a phrase that produces a verb; `Phrase` wraps either result at
+the top level. Assignment and derivation nodes arrive with their milestones.
 
 Examples:
 
@@ -158,12 +160,12 @@ Every verb provides a monadic and dyadic definition and a rank triple:
 
 ```java
 public abstract class Verb {
-    public abstract JArray monadCell(JArray y);
-    public abstract JArray dyadCell(JArray x, JArray y);
-    public abstract int monadRank();   // Integer.MAX_VALUE = unbounded
+    public abstract int monadRank();   // Verb.WHOLE = unbounded
     public abstract int leftRank();
     public abstract int rightRank();
-    public abstract String repr();     // J spelling, for display of verb values
+    public JArray monadCell(JArray y) { throw new JError("valence error"); }
+    public JArray dyadCell(JArray x, JArray y) { throw new JError("valence error"); }
+    public final String repr();        // J spelling, for display of verb values
 }
 ```
 
@@ -177,7 +179,12 @@ Derived verbs (`Insert`, `Prefix`, `Reflex`, `Bond`, `Compose`, `Rank`, `Hook`,
 and conjunctions are therefore just verb constructors.
 
 A verb with no definition for a valence throws `valence error`. Character arguments
-to arithmetic throw `domain error`.
+to arithmetic throw `domain error`. Integer overflow in the current 64-bit atom
+verbs throws `limit error` rather than promoting to J's extended integers.
+
+Milestone 3 registers only `+` and `-`, both at ranks `0 0 0`. Other primitive
+spellings currently produce a syntax error until their milestone. Note that a verb
+value is displayed by its `repr` (e.g. entering `+` prints `+`).
 
 ## 5. Evaluator (`j.eval`)
 
@@ -192,6 +199,11 @@ to arithmetic throw `domain error`.
      `frameShape + resultCellShape`; all cells must produce the same shape.
 - Dyad: compute both frames/cells; frames must have equal shape, or one frame must
   be empty (a scalar) and is broadcast. Unequal frames -> `length error`.
+- Strands stack their evaluated parts: all parts need the same shape, so
+  `(1 2) (3 4)` becomes a 2x2 matrix. Int/float parts promote; char/numeric mixes
+  are a `domain error` until boxing exists.
+- An empty frame is handled with a prototype cell (zeros or NUL characters) so the
+  cell verb can determine the result shape without real data.
 - Errors are `j.JError` with J's wording: `domain error`, `length error`,
   `rank error`, `index error`, `value error`, `valence error`, `syntax error`,
   `spelling error`, `limit error`. Lexical and syntax errors carry a 1-based column.
@@ -210,16 +222,18 @@ guessed here. The `"` conjunction can override any of them.
 
 ## 7. REPL (`j.repl`)
 
-`Repl` reads a line, lexes, parses, evaluates, and prints the result (unless the
-sentence was assignment). `3 : 0` definitions accumulate lines until the closing
-`)`. End-of-input exits; EOF and errors must not crash the loop. The REPL is added
-at milestone 3, after the parser/evaluator exist.
+`Session` owns the environment and turns a line into display text. `Repl` supplies
+J's three-space prompt and prints `|error message` for a `JError`, then continues;
+end-of-input exits. Empty and comment-only lines produce no output. Multi-line
+`3 : 0` definitions and assignment-output suppression arrive with assignment.
 
 ## 8. Testing and milestones
 
 JUnit 5 tests live beside each package; display is tested as exact strings. An
 acceptance suite mirrors the examples in the project brief. Work proceeds milestone
 by milestone, running the suite and committing after each:
+
+Milestones 1–3 are implemented; the rest are planned.
 
 1. `JArray` + display + tests;
 2. tokenizer + tests;
@@ -238,7 +252,8 @@ by milestone, running the suite and committing after each:
 - whether J's matrix display pads the first column;
 - 4+-verb train grouping;
 - ranks and monadic meanings of comparison/structural primitives;
-- strand behavior when juxtaposed nouns have non-scalar shapes;
+- stacking behavior for strands of non-scalar nouns;
+- whether monadic `+` accepts character arrays (currently a `domain error`);
 - parsing of `+/ .*` and `@`/`@:` rank consequences.
 
 These are called out where implemented rather than silently guessed.

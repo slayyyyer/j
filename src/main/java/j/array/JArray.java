@@ -169,6 +169,24 @@ public final class JArray {
         }
     }
 
+    /**
+     * A contiguous copy of {@code count} atoms at {@code offset}, with the given
+     * shape. Rank application uses this to extract a cell: trailing axes are
+     * contiguous in row-major order.
+     */
+    public JArray slice(int offset, int[] newShape) {
+        int count = Shapes.size(newShape);
+        if (offset < 0 || offset > size - count) {
+            throw new IllegalArgumentException("slice out of bounds");
+        }
+        Object copy = switch (type) {
+            case INT -> Arrays.copyOfRange((long[]) data, offset, offset + count);
+            case FLOAT -> Arrays.copyOfRange((double[]) data, offset, offset + count);
+            case CHAR -> Arrays.copyOfRange((char[]) data, offset, offset + count);
+        };
+        return new JArray(type, newShape.clone(), copy);
+    }
+
     // ------------------------------------------------------------- conversions
 
     /**

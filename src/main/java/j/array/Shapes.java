@@ -1,5 +1,7 @@
 package j.array;
 
+import java.util.Arrays;
+
 /** Shape arithmetic for row-major J arrays. */
 public final class Shapes {
     private Shapes() {
@@ -33,6 +35,13 @@ public final class Shapes {
             stride *= shape[axis];
         }
         return strides;
+    }
+
+    /** The shape formed by appending one shape to another. */
+    public static int[] concat(int[] first, int[] second) {
+        int[] result = Arrays.copyOf(first, first.length + second.length);
+        System.arraycopy(second, 0, result, first.length, second.length);
+        return result;
     }
 
     /** J's spelling of a shape, e.g. {@code 3 4}; a scalar's shape formats as "". */
