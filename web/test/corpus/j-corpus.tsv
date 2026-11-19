@@ -1,0 +1,84 @@
+# J corpus captured from real J: j9.6.3/j64/windows/commercial/www.jsoftware.com/2025-04-05T16:41:52/clang-18-1-8/SLEEF=1
+# Settings: 9!:11 ] 5 (five significant digits, matching the documented display).
+# Regenerate with: node test/corpus/capture.ts <path-to-jconsole>
+# Columns: id <TAB> source <TAB> expected.
+# Escapes: \\ backslash, \n newline, \t tab. Everything else is literal.
+# J's multi-line error diagnostics are reduced to the error class, e.g. |length error.
+display.matrix-3x4	i. 3 4	0 1  2  3\n4 5  6  7\n8 9 10 11
+display.matrix-4x3	i. 4 3	0  1  2\n3  4  5\n6  7  8\n9 10 11
+display.matrix-wide	4 5 $ i. 20	 0  1  2  3  4\n 5  6  7  8  9\n10 11 12 13 14\n15 16 17 18 19
+display.matrix-negative	_3 + i. 4 3	_3 _2 _1\n 0  1  2\n 3  4  5\n 6  7  8
+display.scalar	42	42
+display.vector	2 3 4	2 3 4
+display.char-vector	'hello'	hello
+display.char-matrix	2 3 $ 'abcdef'	abc\ndef
+display.quote-escape	'don''t'	don't
+display.box-scalar	< 5	+-+\n|5|\n+-+
+display.box-vector	< 1 2 3	+-----+\n|1 2 3|\n+-----+
+display.box-matrix	2 2 $ < 1 2 3 4	+-------+-------+\n|1 2 3 4|1 2 3 4|\n+-------+-------+\n|1 2 3 4|1 2 3 4|\n+-------+-------+
+display.classify-table	= 1 2 1 3	1 0 1 0\n0 1 0 0\n0 0 0 1
+display.rank3	2 3 2 $ i. 12	 0  1\n 2  3\n 4  5\n\n 6  7\n 8  9\n10 11
+display.empty-numeric	0 $ 0	
+display.empty-char	''	
+numeric.divide	% 3	0.33333
+numeric.two-thirds	2 % 3	0.66667
+numeric.large	1e6 % 3	3.3333e5
+numeric.rounding	1.23456789	1.2346
+numeric.integral-float	2.0	2
+numeric.small	0.0001	0.0001
+numeric.negative-small	1e_5	1e_5
+numeric.negative-exponent	_1.5e_7	_1.5e_7
+numeric.infinity	1 % 0	_
+numeric.nan	0 % 0	0
+numeric.rational	1r2 + 1r3	5r6
+numeric.complex	3j4 * 3j4	_7j24
+numeric.extended	9223372036854775807 + 1	9.2234e18
+numeric.promotion	1 + 2.5	3.5
+fill.take-past-end	5 {. 1 2 3	1 2 3 0 0
+fill.take-short	3 {. 1 2	1 2 0
+fill.take-negative-char	_5 {. 'abc'	  abc
+fill.take-char	5 {. 'ab'	ab   
+fill.take-2d	2 3 {. i. 4 5	0 1 2\n5 6 7
+fill.take-2d-negative	_2 _3 {. i. 4 5	12 13 14\n17 18 19
+fill.drop-2d	1 2 }. i. 4 5	 7  8  9\n12 13 14\n17 18 19
+fill.head-empty	{. 0 $ 0	0
+fill.head-empty-char	{. ''	 
+fill.copy	3 # 1 2 3	1 1 1 2 2 2 3 3 3
+fill.copy-mask	1 0 1 # 10 20 30	10 30
+fill.copy-table	2 # i. 2 3	0 1 2\n0 1 2\n3 4 5\n3 4 5
+fill.reshape-cycle	2 5 $ i. 3	0 1 2 0 1\n2 0 1 2 0
+fill.reshape-pad	2 3 $ 1 2	1 2 1\n2 1 2
+rank.table-sum	+/ i. 3 4	12 15 18 21
+rank.rows	+/"1 i. 3 4	6 22 38
+rank.rows-negative	+/"_1 i. 3 4	6 22 38
+rank.two-number	+/"0 1 i. 3 4	6 22 38
+rank.box-atoms	(<"0) 1 2 3	+-+-+-+\n|1|2|3|\n+-+-+-+
+rank.rank3-rows	+/"1 i. 2 3 4	 6 22 38\n54 70 86
+rank.rank3-cells	+/"2 i. 2 3 4	12 15 18 21\n48 51 54 57
+rank.train-columns	(+/ % #) i. 3 4	4 5 6 7
+fill.catenate-mismatch	1 2 , i. 2 3	1 2 0\n0 1 2\n3 4 5
+structural.reverse	|. i. 2 3	3 4 5\n0 1 2
+structural.rotate	1 |. i. 3 4	4 5  6  7\n8 9 10 11\n0 1  2  3
+structural.rotate-axes	1 1 |. i. 3 4	5  6  7 4\n9 10 11 8\n1  2  3 0
+structural.transpose	|: 2 3 $ i. 6	0 3\n1 4\n2 5
+structural.transpose-permute	1 0 |: 2 3 $ i. 6	0 3\n1 4\n2 5
+structural.index	1 2 3 { 10 20 30 40	20 30 40
+structural.index-table	1 { i. 3 4	4 5 6 7
+structural.indexof	3 1 4 1 5 9 i. 5	4
+structural.indexof-missing	10 20 30 i. 20 99	1 3
+structural.indexof-cells	1 2 3 i. 2 3 4	1 2 3
+structural.catalog	{ (<1 2),(<3 4)	+---+---+\n|1 3|1 4|\n+---+---+\n|2 3|2 4|\n+---+---+
+structural.reflex	+~ 1 2 3	2 4 6
+structural.passive	3 +~ 10	13
+structural.equal	1 2 3 = 2	0 1 0
+structural.nub-sieve	~: 1 2 1 3	1 1 0 1
+structural.ravel	, 2 3 $ i. 6	0 1 2 3 4 5
+structural.tally	# i. 3 4	3
+structural.prefix	+/\\ 1 2 3	1 3 6
+errors.length	1 2 3 + 1 2	|length error
+errors.copy-length	1 2 3 # 1 2	|length error
+errors.index	2 { 1 2	|index error
+errors.domain	1 + 'a'	|domain error
+errors.value	bar 1	|value error
+sparse.display	$. 3 4 $ 0 75 0 53 0 0 67 67 93 0 51 83	0 1 | 75\n0 3 | 53\n1 2 | 67\n1 3 | 67\n2 0 | 93\n2 2 | 51\n2 3 | 83
+sparse.densify	$.^:_1 $. 2 2 $ 1 0 0 2	1 0\n0 2

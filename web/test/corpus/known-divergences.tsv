@@ -1,0 +1,8 @@
+# Cases where this interpreter currently differs from real J.
+# Both suites skip these with the stated reason and fail on any unlisted case
+# that diverges. Remove an entry once the interpreter matches J.
+numeric.large	J switches to exponent form at 1e5; the port switches at 1e6 (documented approximate cutover).
+numeric.nan	J defines 0 % 0 as 0; the port follows IEEE and prints _.
+numeric.extended	J promotes 64-bit integer overflow to float; the port deliberately promotes to an extended integer.
+fill.catenate-mismatch	J fills mismatched catenate items to a common shape; the port reports a rank error.
+structural.catalog	J returns boxed rows from catalog; the port returns an opened array.

@@ -284,6 +284,7 @@ src/main/java/j/eval    Evaluator, Environment, Value, Rank, Assembly
 src/main/java/j/verbs   primitive, structural, derived and explicit verbs
 src/main/java/j/repl    Session, Repl
 src/test/java/...       JUnit 5 tests, including AcceptanceTest
+web/test/corpus         J corpus captured from real J, shared with the TypeScript suite
 ```
 
 ## Tests
@@ -293,6 +294,12 @@ comparisons, structural verbs, boxes, exact and complex types, sparse conversion
 display, boxed sparse conversion, inverse sparse spelling, arithmetic and structural remapping, insert reductions, prefix scans, copy fills, catalog, transpose, rotate, derived verbs, insert
 identities, assignment, explicit control flow and the REPL. `AcceptanceTest`
 checks every example from the project brief.
+
+`CorpusTest` replays `web/test/corpus/j-corpus.tsv`, whose expected outputs were
+captured from real J with five-digit display precision. The TypeScript suite runs
+the same file, so formatting, fill and rank divergences fail both suites. Cases
+where the subset currently differs are documented with reasons in
+`web/test/corpus/known-divergences.tsv` and skipped by both suites.
 
 ```sh
 ./gradlew test

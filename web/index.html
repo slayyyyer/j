@@ -1,0 +1,495 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>j.ts — a J interpreter in TypeScript</title>
+    <meta
+      name="description"
+      content="A from-scratch interpreter for a practical subset of the J programming language, written in TypeScript, with an interactive playground, examples and a language guide."
+    />
+  </head>
+  <body>
+    <a class="skip-link" href="#playground">Skip to the playground</a>
+
+    <header class="site-header">
+      <a class="wordmark" href="#top" aria-label="j.ts home">
+        <span class="wordmark-j">j</span><span class="wordmark-ts">.ts</span>
+      </a>
+      <nav class="site-nav" aria-label="Sections">
+        <a href="#playground">Playground</a>
+        <a href="#guide">How to</a>
+        <a href="#limits">Limits</a>
+      </nav>
+      <span class="header-badge">J subset · TypeScript</span>
+    </header>
+
+    <main>
+      <section class="hero" id="top">
+        <div class="hero-copy">
+          <p class="eyebrow">A practical subset of J, ported to TypeScript</p>
+          <h1>Think in arrays.<br />Write in sentences.</h1>
+          <p class="lede">
+            J is an array language with no operator precedence. A sentence is a few words read
+            right to left, and every value — a number, a matrix, a list of words — is an array.
+            This site runs a from-scratch subset interpreter, written in TypeScript, entirely in
+            your browser.
+          </p>
+          <div class="hero-actions">
+            <a class="button primary" href="#playground">Open the playground</a>
+            <a class="button ghost" href="#guide">Read the how-to</a>
+          </div>
+        </div>
+        <div class="hero-card" aria-hidden="true">
+          <div class="hero-card-head">
+            <span class="terminal-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+            <span>j session</span>
+          </div>
+          <pre class="hero-code">   i. 3 4
+0 1  2  3
+4 5  6  7
+8 9 10 11
+
+   +/"1 i. 3 4
+6 22 38
+
+   (+/ % #) 1 2 3 4
+2.5
+
+   avg =: +/ % #
+   avg 1 2 3 4
+2.5</pre>
+        </div>
+      </section>
+
+      <section class="section" id="playground">
+        <div class="section-head">
+          <p class="eyebrow"><span class="num">01</span> Playground</p>
+          <h2>A REPL in the browser</h2>
+          <p class="section-lede">
+            The prompt is three spaces wide, like <code>jconsole</code>. Enter evaluates a
+            sentence; Shift+Enter adds a line, which you need for a multi-line definition.
+            Assignment prints nothing — that is J, not a bug. Share copies a replayable link,
+            and the last session is kept in this browser. Long runs stop automatically.
+          </p>
+        </div>
+
+        <div class="playground-grid">
+          <div class="terminal">
+            <div class="terminal-bar">
+              <span class="terminal-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span class="terminal-title">j session</span>
+              <button
+                type="button"
+                class="terminal-action"
+                id="share-session"
+                title="Copy a link that replays this session"
+              >
+                share
+              </button>
+              <button type="button" class="terminal-action" id="reset-session">reset</button>
+            </div>
+            <div class="terminal-output" id="terminal-output" aria-live="polite"></div>
+            <form class="terminal-form" id="terminal-form">
+              <span class="prompt" aria-hidden="true">   </span>
+              <textarea
+                id="terminal-input"
+                rows="1"
+                spellcheck="false"
+                autocomplete="off"
+                autocapitalize="off"
+                aria-label="J sentence"
+                placeholder="i. 5"
+              ></textarea>
+              <button type="submit" class="run-button" id="run-session">Run</button>
+            </form>
+            <div class="terminal-foot">
+              <span>Enter to run</span><span>Shift+Enter for a new line</span><span>↑ / ↓ history · autosaved</span>
+            </div>
+          </div>
+
+          <aside class="examples" aria-labelledby="examples-title">
+            <div class="examples-head">
+              <h3 id="examples-title">Examples</h3>
+              <p>Click to run</p>
+            </div>
+            <div id="example-list" class="example-list"></div>
+          </aside>
+        </div>
+      </section>
+
+      <section class="section guide" id="guide">
+        <div class="section-head">
+          <p class="eyebrow"><span class="num">02</span> How to</p>
+          <h2>A working tour of the language</h2>
+          <p class="section-lede">
+            Everything this interpreter implements, in the order it becomes useful. Snippets on a
+            dark background are runnable — the button in the corner sends them to the playground.
+          </p>
+        </div>
+
+        <div class="guide-grid">
+          <nav class="toc" aria-label="Guide contents">
+            <p class="toc-title">Contents</p>
+            <ol>
+              <li><a href="#sentences">One sentence, one value</a></li>
+              <li><a href="#arrays">Everything is an array</a></li>
+              <li><a href="#verbs">Verbs read in two directions</a></li>
+              <li><a href="#adverbs">Adverbs derive new verbs</a></li>
+              <li><a href="#rank">Rank chooses the cell</a></li>
+              <li><a href="#trains">Trains have no nouns</a></li>
+              <li><a href="#names">Names and definitions</a></li>
+              <li><a href="#errors">When something is wrong</a></li>
+              <li><a href="#sparse">Sparse arrays</a></li>
+              <li><a href="#limits">What is left out</a></li>
+            </ol>
+          </nav>
+
+          <article class="guide-body">
+            <section class="guide-section" id="sentences">
+              <h3><span class="sec-num">01</span> One sentence, one value</h3>
+              <p>
+                J has no operator precedence. A sentence is evaluated strictly from right to left,
+                so the rightmost verb takes the noun to its right, and the result becomes the
+                right argument of the next verb. Parentheses are the only way to group.
+              </p>
+              <pre data-run>2 * 3 + 4      NB. 14
+10 - 3 - 2     NB. 9
+- 2 + 3        NB. _5</pre>
+              <p>
+                A sentence produces either a noun or a verb. Nouns are printed in J's display
+                format. A verb value is printed as its spelling, so entering <code>+</code> alone
+                shows <code>+</code>.
+              </p>
+              <pre data-run>+
++/
+(+/ % #)</pre>
+            </section>
+
+            <section class="guide-section" id="arrays">
+              <h3><span class="sec-num">02</span> Everything is an array</h3>
+              <p>
+                There is one noun type. An <em>atom</em> is a rank-0 array; a list is rank 1; a
+                table is rank 2. The <code>$</code> verb reports shape, <code>#</code> reports
+                tally (the number of items), and <code>$</code> with a left argument reshapes.
+                Scalar extension is not special-cased: an atom has an empty frame, so it broadcasts
+                against any array.
+              </p>
+              <pre data-run>i. 5           NB. 0 1 2 3 4
+i. 3 4         NB. a 3x4 table
+2 3 $ i. 6     NB. 0 1 2 / 3 4 5
+$ i. 3 4       NB. 3 4
+# i. 3 4       NB. 3</pre>
+              <p>Literals cover characters, exact integers, rationals and complex numbers:</p>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr><th>Written</th><th>Meaning</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr><td><code>42</code> <code>_3</code></td><td>integer; a leading <code>_</code> is the minus sign</td></tr>
+                    <tr><td><code>2.5</code> <code>1e6</code> <code>1e_5</code></td><td>floating point</td></tr>
+                    <tr><td><code>_</code> <code>__</code> <code>_.</code></td><td>positive infinity, negative infinity, NaN</td></tr>
+                    <tr><td><code>123x</code></td><td>extended integer, promoted past the native range</td></tr>
+                    <tr><td><code>1r2</code></td><td>exact rational, one half</td></tr>
+                    <tr><td><code>3j4</code></td><td>complex number, 3 + 4i</td></tr>
+                    <tr><td><code>'text'</code></td><td>character vector; <code>''</code> inside a string is one quote</td></tr>
+                    <tr><td><code>1 2 3</code></td><td>a strand: juxtaposed nouns form one array</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <p>
+                Display follows J's conventions. Negative numbers use <code>_</code>, floats keep
+                five significant digits, numeric tables align each column, character arrays print
+                as text, and boxed arrays are drawn as bordered cells.
+              </p>
+              <pre data-run>% 3
+2 % 3
+1 % 0
+0 % 0
+1r2 + 1r3
+'hello'
+&lt; 1 2 3</pre>
+            </section>
+
+            <section class="guide-section" id="verbs">
+              <h3><span class="sec-num">03</span> Verbs read in two directions</h3>
+              <p>
+                Every verb has a monadic meaning (one argument, on its right) and a dyadic meaning
+                (a noun on each side). The sentence decides which applies: <code>- 5</code> is
+                negation, while <code>10 - 5</code> is subtraction. A verb that has no definition
+                for the valence being asked reports <code>valence error</code>.
+              </p>
+              <div class="table-wrap">
+                <table class="reference">
+                  <thead>
+                    <tr><th>Verb</th><th>Monadic</th><th>Dyadic</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr><td><code>+</code></td><td>conjugate</td><td>addition</td></tr>
+                    <tr><td><code>-</code></td><td>negate</td><td>subtract</td></tr>
+                    <tr><td><code>*</code></td><td>signum</td><td>multiply</td></tr>
+                    <tr><td><code>%</code></td><td>reciprocal</td><td>divide</td></tr>
+                    <tr><td><code>^</code></td><td>exponential</td><td>power</td></tr>
+                    <tr><td><code>=</code></td><td>self-classify</td><td>equal</td></tr>
+                    <tr><td><code>~:</code></td><td>nub sieve</td><td>not equal</td></tr>
+                    <tr><td><code>&lt;</code></td><td>box</td><td>less than</td></tr>
+                    <tr><td><code>&gt;</code></td><td>open one level</td><td>greater than</td></tr>
+                    <tr><td><code>&lt;:</code></td><td>decrement</td><td>less or equal</td></tr>
+                    <tr><td><code>&gt;:</code></td><td>increment</td><td>greater or equal</td></tr>
+                    <tr><td><code>i.</code></td><td>integers <code>0..n-1</code></td><td>index of</td></tr>
+                    <tr><td><code>$</code></td><td>shape</td><td>reshape</td></tr>
+                    <tr><td><code>#</code></td><td>tally</td><td>copy</td></tr>
+                    <tr><td><code>,</code></td><td>ravel</td><td>catenate</td></tr>
+                    <tr><td><code>|.</code></td><td>reverse</td><td>rotate</td></tr>
+                    <tr><td><code>{.</code></td><td>head</td><td>take, with fill</td></tr>
+                    <tr><td><code>}.</code></td><td>behead</td><td>drop</td></tr>
+                    <tr><td><code>{</code></td><td>catalog</td><td>index</td></tr>
+                    <tr><td><code>|:</code></td><td>transpose</td><td>permute axes</td></tr>
+                    <tr><td><code>$.</code></td><td>make sparse</td><td>toggle sparse/dense</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <p>
+                Arithmetic and comparison verbs have rank 0: they see atoms, and the rank machinery
+                iterates the surrounding frames. That is why a scalar extends across a list, and why
+                mismatched frames report <code>length error</code>.
+              </p>
+              <pre data-run>1 2 3 + 10     NB. 11 12 13
+1 2 3 + 1 2    NB. length error
+1 2 3 = 2      NB. 0 1 0
+= 1 2 1 3      NB. a 3x4 classification table
+~: 1 2 1 3     NB. 1 1 0 1</pre>
+              <p>
+                Characters compare with characters, boxes compare for equality, and numeric types
+                promote along <code>INT → BIGINT → RATIONAL → FLOAT → COMPLEX</code>. Mixing a
+                character with a number is a <code>domain error</code>.
+              </p>
+            </section>
+
+            <section class="guide-section" id="adverbs">
+              <h3><span class="sec-num">04</span> Adverbs derive new verbs</h3>
+              <p>
+                An adverb takes a verb and produces another verb. <code>/</code> inserts the verb
+                between the items of its argument, folding from the right; <code>\</code> applies it
+                to each prefix; <code>~</code> makes a monad apply its dyad to the same argument
+                twice, and makes a dyad swap its arguments.
+              </p>
+              <pre data-run>+/ 1 2 3       NB. 1 + (2 + 3)
+-/ 1 2 3       NB. 1 - (2 - 3)
++/\ 1 2 3      NB. 1 3 6
++~ 1 2 3       NB. 2 4 6
+3 +~ 10        NB. 13</pre>
+              <p>
+                Insert needs an identity for an empty argument. The implemented identities are
+                <code>0</code> for <code>+ - &lt; &gt; ~:</code> and <code>1</code> for
+                <code>* % ^ = &lt;: &gt;:</code>, so <code>+/ i. 0</code> is <code>0</code> and
+                <code>%/ i. 0</code> is <code>1</code>.
+              </p>
+              <p>
+                <code>+/</code> is two words: the verb <code>+</code> and the adverb
+                <code>/</code>. The derived verb is an ordinary value, so it can be assigned and
+                passed around.
+              </p>
+              <pre data-run>f =: +/
+f 1 2 3 4      NB. 10
+f 2 3 4        NB. 9</pre>
+            </section>
+
+            <section class="guide-section" id="rank">
+              <h3><span class="sec-num">05</span> Rank chooses the cell</h3>
+              <p>
+                The rank conjunction <code>"</code> says how much of each argument a verb should see
+                at once. <code>u"r</code> applies <code>u</code> to rank-<code>r</code> cells,
+                iterating over the leading frame and assembling the results. A negative rank counts
+                down from the argument's rank, so <code>_1</code> means “whole argument minus one
+                axis”.
+              </p>
+              <pre data-run>+/ i. 3 4      NB. whole table: 12 15 18 21
++/"1 i. 3 4    NB. each row: 6 22 38
++/"_1 i. 3 4    NB. same, expressed negatively
+(&lt;"0) 1 2 3    NB. box every atom</pre>
+              <p>
+                A one-number spec sets all three ranks. A two-number spec is
+                <code>left right</code>, with the monadic rank taken from the right; three numbers
+                are monadic, left and right.
+              </p>
+              <pre data-run>+/"0 1 i. 3 4   NB. 6 22 38
+(+ -) 5        NB. 0</pre>
+            </section>
+
+            <section class="guide-section" id="trains">
+              <h3><span class="sec-num">06</span> Trains have no nouns</h3>
+              <p>
+                A phrase made only of verbs is itself a verb. Two verbs form a hook and three form a
+                fork; longer trains group from the right. This is how J writes a mean without ever
+                naming an argument.
+              </p>
+              <div class="table-wrap">
+                <table class="reference formulas">
+                  <thead>
+                    <tr><th>Train</th><th>Monadic</th><th>Dyadic</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr><td><code>f g</code></td><td><code>y f (g y)</code></td><td><code>x f (g y)</code></td></tr>
+                    <tr><td><code>f g h</code></td><td><code>(f y) g (h y)</code></td><td><code>(x f y) g (x h y)</code></td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <pre data-run>(+/ % #) 1 2 3 4     NB. sum divided by tally: 2.5
+(+/ % #) i. 3 4       NB. means of the columns: 4 5 6 7
+(+ -) 5               NB. 5 + (-5): 0</pre>
+              <p>
+                Without parentheses, <code>- - 5</code> is two monads, not a hook, because the noun
+                is present. A train must be a verb phrase.
+              </p>
+            </section>
+
+            <section class="guide-section" id="names">
+              <h3><span class="sec-num">07</span> Names and definitions</h3>
+              <p>
+                <code>=:</code> assigns in the session table, <code>=.</code> assigns locally
+                inside an explicit verb. At top level both write the same table. Assignment prints
+                nothing, and chains right-associatively. A name's part of speech — noun or verb —
+                comes from the value assigned, and the parser uses that class in later sentences.
+              </p>
+              <pre data-run>a =: 6
+a * 7          NB. 42
+b =: a =: 7
+b              NB. 7
+(c =. 3) + 2   NB. 5, and c is bound</pre>
+              <p>
+                An inline <code>{{ ... }}</code> definition holds one expression and binds
+                <code>x</code> and <code>y</code> on call. A definition started with
+                <code>name =: {{</code> or <code>name =: 3 : 0</code> is collected until
+                <code>}}</code> or <code>)</code>, and uses the same statement parser, so control
+                words work in either form.
+              </p>
+              <pre data-run>inc =: {{ y + 1 }}
+inc 41         NB. 42
+plus =: {{ x + y }}
+20 plus 22     NB. 42</pre>
+              <div class="table-wrap">
+                <table class="reference">
+                  <thead>
+                    <tr><th>Control word</th><th>Form</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr><td><code>if.</code></td><td><code>if. cond do. ... else. ... end.</code></td></tr>
+                    <tr><td><code>while.</code></td><td><code>while. cond do. ... end.</code></td></tr>
+                    <tr><td><code>for_i.</code></td><td><code>for_i. values do. ... end.</code>, binding <code>i</code> and <code>i_index</code></td></tr>
+                    <tr><td><code>return.</code></td><td><code>return. value</code>, or bare <code>return.</code></td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <pre data-run>sumto =: 3 : 0
+total =. 0
+i =. 1
+while. i &lt;: y do.
+  total =. total + i
+  i =. i + 1
+end.
+total
+)
+sumto 10       NB. 55</pre>
+              <p>
+                The value of the last statement executed is the result when no
+                <code>return.</code> fires. In a <code>for.</code> loop the variable is
+                <code>i</code> by default, or the name after <code>for_</code>.
+              </p>
+              <pre data-run>squares =: 3 : 0
+out =. 0 $ 0
+for_i. i. y do.
+  out =. out , i * i
+end.
+out
+)
+squares 5      NB. 0 1 4 9 16</pre>
+            </section>
+
+            <section class="guide-section" id="errors">
+              <h3><span class="sec-num">08</span> When something is wrong</h3>
+              <p>
+                An error aborts the sentence but not the session. The REPL prints the J phrase after
+                a vertical bar and waits for the next input.
+              </p>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr><th>Message</th><th>Usually means</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr><td><code>spelling error</code></td><td>a malformed literal, unknown character, or unterminated string</td></tr>
+                    <tr><td><code>syntax error</code></td><td>the words do not form a sentence</td></tr>
+                    <tr><td><code>value error</code></td><td>a name has not been assigned</td></tr>
+                    <tr><td><code>domain error</code></td><td>the wrong type or kind of argument, such as <code>1 + 'a'</code></td></tr>
+                    <tr><td><code>length error</code></td><td>two argument frames do not agree</td></tr>
+                    <tr><td><code>rank error</code></td><td>a structural verb was given the wrong rank</td></tr>
+                    <tr><td><code>index error</code></td><td>an index is outside the array</td></tr>
+                    <tr><td><code>valence error</code></td><td>the verb has no definition for that valence</td></tr>
+                    <tr><td><code>limit error</code></td><td>the requested result is too large to build</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <pre data-run>1 2 3 + 1 2    NB. length error
+1 2 3 { 1 2    NB. index error
+foo            NB. value error</pre>
+            </section>
+
+            <section class="guide-section" id="sparse">
+              <h3><span class="sec-num">09</span> Sparse arrays</h3>
+              <p>
+                <code>$.</code> converts a dense array to sparse storage: a fill atom plus the
+                non-fill positions that are actually stored. Monadic <code>$.</code> always makes an
+                array sparse, <code>0 $.</code> toggles between the two representations, and
+                <code>$.^:_1</code> densifies.
+              </p>
+              <pre data-run>$. 3 4 $ 0 75 0 53 0 0 67 67 93 0 51 83</pre>
+              <p>
+                Sparse display prints the flat index coordinates of each stored value. Structural
+                verbs remap the stored entries instead of expanding the array, and reductions and
+                prefixes assemble sparse results without densifying. Boxed sparse arrays use an
+                empty box as their fill.
+              </p>
+              <pre data-run>0 $. $. 2 2 $ 1 0 0 2    NB. dense again
+$.^:_1 $. 2 2 $ 1 0 0 2  NB. the same, by inverse
+2 # $. 3 $ 1 0 2          NB. copy keeps sparse storage</pre>
+            </section>
+
+            <section class="guide-section" id="limits">
+              <h3><span class="sec-num">10</span> What is left out</h3>
+              <p>
+                This is a teaching subset, ported from the Java project in this repository, not a
+                replacement for a full J implementation. It is deliberately conservative:
+              </p>
+              <ul class="limit-list">
+                <li>No locales, system facilities, or file and foreign conjunctions.</li>
+                <li>No <code>@</code>, <code>&amp;</code>, bond, or inner product <code>+/ .*</code>.</li>
+                <li>No fit conjunction <code>#!.f</code>; copy uses the type's default fill.</li>
+                <li>Only <code>if.</code>, <code>while.</code>, <code>for.</code> and <code>return.</code> — no <code>select.</code>, <code>try.</code> or <code>throw.</code></li>
+                <li>Five significant digits for floats, with approximate tie rounding and exponent cutovers.</li>
+                <li>Integer arithmetic promotes to extended integers on overflow; the browser build uses JavaScript numbers up to the safe-integer range, then BigInt.</li>
+                <li>An inline <code>{{ ... }}</code> holds one expression; multi-line definitions are collected by the REPL.</li>
+              </ul>
+              <p>
+                Within those bounds the array model, the parser, rank, adverbs, trains, explicit
+                definitions and sparse storage all behave as described above.
+              </p>
+            </section>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <p>
+        <span class="wordmark small"><span class="wordmark-j">j</span><span class="wordmark-ts">.ts</span></span>
+        A TypeScript port of the Java J-subset interpreter. The language implementation lives in
+        <code>src/j/</code>; this page uses Vite only to build.
+      </p>
+      <p class="footer-note">No runtime dependencies in the interpreter. J is a language by Ken Iverson and Roger Hui.</p>
+    </footer>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

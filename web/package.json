@@ -1,0 +1,20 @@
+{
+  "name": "j-typescript",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "A TypeScript port of the J subset interpreter, with an interactive demo site.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "npm run test:acceptance && npm run test:unit",
+    "test:acceptance": "node test/run.ts",
+    "test:unit": "node --test test/array.test.ts test/format.test.ts test/lexer.test.ts test/parser.test.ts test/structural.test.ts test/sparse.test.ts test/share.test.ts test/corpus.test.ts test/budget.test.ts test/guide.test.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.7"
+  }
+}
