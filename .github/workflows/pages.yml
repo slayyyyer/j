@@ -44,6 +44,12 @@ jobs:
         env:
           SITE_BASE: /j/
 
+      - name: Acceptance checks
+        run: npm run test:acceptance
+
+      - name: Unit tests
+        run: npm run test:unit
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
